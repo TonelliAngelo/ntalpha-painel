@@ -1,0 +1,1 @@
+import Nav from '@/components/Nav';import PropertyForm from '@/components/PropertyForm';export default function Novo(){return <div className="shell"><Nav/><main className="content"><header><div><span className="eyebrow">CADASTRO</span><h1>Novo imóvel</h1></div></header><PropertyForm/></main></div>}
