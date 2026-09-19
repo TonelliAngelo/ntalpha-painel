@@ -393,3 +393,118 @@ textarea:focus{
 
   h1{font-size:32px}
 }
+/* =========================================================
+   NT ALPHA - MODAL REDEFINIR SENHA
+   ========================================================= */
+
+.password-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(3, 35, 29, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.password-modal {
+  width: 100%;
+  max-width: 480px;
+  background: #ffffff;
+  border: 1px solid #dce5df;
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.22);
+}
+
+.password-modal h2 {
+  margin: 0 0 8px;
+  color: #073b32;
+  font-size: 26px;
+}
+
+.password-modal p {
+  margin: 0 0 22px;
+  color: #5d6864;
+  line-height: 1.5;
+}
+
+.password-modal label {
+  display: block;
+  margin-bottom: 16px;
+  color: #173b34;
+  font-weight: 700;
+}
+
+.password-modal input {
+  width: 100%;
+  margin-top: 7px;
+  padding: 12px 14px;
+  border: 1px solid #ccd8d2;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #082f29;
+  font-size: 15px;
+  outline: none;
+}
+
+.password-modal input:focus {
+  border-color: #b88a25;
+  box-shadow: 0 0 0 3px rgba(184, 138, 37, 0.12);
+}
+
+.password-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.password-modal-actions button {
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 8px;
+  border: 1px solid #0b6655;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.password-modal-actions .cancel {
+  background: #ffffff;
+  color: #0b6655;
+}
+
+.password-modal-actions .confirm {
+  background: #0b6655;
+  color: #ffffff;
+}
+
+.password-modal-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.password-message {
+  margin-top: 14px !important;
+  padding: 10px 12px;
+  border-radius: 7px;
+  background: #f7f2e6;
+  color: #6f5314 !important;
+  font-size: 14px;
+}
+
+@media (max-width: 520px) {
+  .password-modal {
+    padding: 22px 18px;
+  }
+
+  .password-modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .password-modal-actions button {
+    width: 100%;
+  }
+}
