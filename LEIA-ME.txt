@@ -1,11 +1,8 @@
-PACOTE FINAL - PAINEL NT ALPHA
-Substitua estes 3 arquivos no repositório ntalpha-painel mantendo os caminhos:
-app/globals.css
-app/login/page.tsx
-components/AuthGate.tsx
-
-Pré-requisito já existente:
-public/images/ntalpha-logo-footer.png
-
-Inclui identidade visual clara/dourada/verde e revisão responsiva para desktop, tablet e celular.
-Não altera Supabase, autenticação, redefinição de senha, banco, Cloudflare ou DNS.
+NT ALPHA - correção das rotas 404
+Enviar esta estrutura para o repositório TonelliAngelo/ntalpha-painel.
+São três NOVOS arquivos:
+app/clientes/page.tsx
+app/condominios/page.tsx
+app/contatos/page.tsx
+Não substitua nem apague os demais arquivos.
+As telas leem as tabelas existentes clients, condominiums e leads via Supabase.
