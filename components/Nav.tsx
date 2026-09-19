@@ -60,6 +60,10 @@ export default function Nav() {
           Contatos
         </Link>
 
+        <Link className={ativo('/usuarios') ? 'active' : ''} href="/usuarios">
+          Usuários
+        </Link>
+        
         <Link className="new-property-link" href="/imoveis/novo">
           + Novo imóvel
         </Link>
