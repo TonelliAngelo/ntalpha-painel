@@ -20,6 +20,15 @@ export default function UsuariosPage() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
 
+  const [usuarioSelecionado, setUsuarioSelecionado] =
+    useState<Usuario | null>(null);
+
+  const [novaSenha, setNovaSenha] = useState('');
+  const [confirmarSenha, setConfirmarSenha] = useState('');
+  const [processando, setProcessando] = useState(false);
+  const [mensagem, setMensagem] = useState('');
+  const [erroSenha, setErroSenha] = useState('');
+
   useEffect(() => {
     async function carregarUsuarios() {
       setLoading(true);
@@ -50,6 +59,100 @@ export default function UsuariosPage() {
     }).format(new Date(data));
   }
 
+  function abrirReset(usuario: Usuario) {
+    setUsuarioSelecionado(usuario);
+    setNovaSenha('');
+    setConfirmarSenha('');
+    setErroSenha('');
+    setMensagem('');
+  }
+
+  function fecharReset() {
+    if (processando) return;
+
+    setUsuarioSelecionado(null);
+    setNovaSenha('');
+    setConfirmarSenha('');
+    setErroSenha('');
+  }
+
+  async function redefinirSenha() {
+    if (!usuarioSelecionado) return;
+
+    setErroSenha('');
+    setMensagem('');
+
+    if (novaSenha.length < 8) {
+      setErroSenha('A nova senha deve possuir pelo menos 8 caracteres.');
+      return;
+    }
+
+    if (novaSenha !== confirmarSenha) {
+      setErroSenha('As senhas informadas não são iguais.');
+      return;
+    }
+
+    const confirmar = window.confirm(
+      `Confirma a redefinição da senha de ${usuarioSelecionado.nome}?`
+    );
+
+    if (!confirmar) return;
+
+    setProcessando(true);
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await client.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        setErroSenha(
+          'Sua sessão expirou. Saia do painel e entre novamente.'
+        );
+        setProcessando(false);
+        return;
+      }
+
+      const response = await fetch('/api/admin/reset-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          userId: usuarioSelecionado.id,
+          novaSenha,
+        }),
+      });
+
+      const resultado = await response.json();
+
+      if (!response.ok) {
+        setErroSenha(
+          resultado?.error || 'Não foi possível redefinir a senha.'
+        );
+        setProcessando(false);
+        return;
+      }
+
+      setMensagem(
+        `Senha de ${usuarioSelecionado.nome} redefinida com sucesso.`
+      );
+
+      setNovaSenha('');
+      setConfirmarSenha('');
+      setUsuarioSelecionado(null);
+    } catch (error) {
+      console.error('Erro ao redefinir senha:', error);
+      setErroSenha(
+        'Não foi possível comunicar com o servidor. Tente novamente.'
+      );
+    } finally {
+      setProcessando(false);
+    }
+  }
+
   return (
     <div className="shell">
       <Nav />
@@ -61,6 +164,12 @@ export default function UsuariosPage() {
             <h1>Usuários</h1>
           </div>
         </header>
+
+        {mensagem && (
+          <div className="success-message">
+            <strong>{mensagem}</strong>
+          </div>
+        )}
 
         <section className="panel">
           <h2>Usuários do painel</h2>
@@ -115,16 +224,13 @@ export default function UsuariosPage() {
                         </span>
                       </td>
 
-                      <td>
-                        {formatarData(usuario.last_sign_in_at)}
-                      </td>
+                      <td>{formatarData(usuario.last_sign_in_at)}</td>
 
                       <td>
                         <button
                           className="user-action"
                           type="button"
-                          disabled
-                          title="Será habilitado na próxima etapa"
+                          onClick={() => abrirReset(usuario)}
                         >
                           Redefinir senha
                         </button>
@@ -136,6 +242,89 @@ export default function UsuariosPage() {
             </div>
           )}
         </section>
+
+        {usuarioSelecionado && (
+          <div
+            className="password-modal-backdrop"
+            onClick={fecharReset}
+          >
+            <div
+              className="password-modal"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <span className="eyebrow">
+                ADMINISTRAÇÃO DE USUÁRIO
+              </span>
+
+              <h2>Redefinir senha</h2>
+
+              <p>
+                Usuário:{' '}
+                <strong>{usuarioSelecionado.nome}</strong>
+              </p>
+
+              <p className="password-user-email">
+                {usuarioSelecionado.email}
+              </p>
+
+              <label>
+                Nova senha
+                <input
+                  type="password"
+                  value={novaSenha}
+                  onChange={(event) =>
+                    setNovaSenha(event.target.value)
+                  }
+                  autoComplete="new-password"
+                  placeholder="Mínimo de 8 caracteres"
+                  disabled={processando}
+                />
+              </label>
+
+              <label>
+                Confirmar nova senha
+                <input
+                  type="password"
+                  value={confirmarSenha}
+                  onChange={(event) =>
+                    setConfirmarSenha(event.target.value)
+                  }
+                  autoComplete="new-password"
+                  placeholder="Digite novamente a senha"
+                  disabled={processando}
+                />
+              </label>
+
+              {erroSenha && (
+                <div className="password-error">
+                  {erroSenha}
+                </div>
+              )}
+
+              <div className="password-modal-actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={fecharReset}
+                  disabled={processando}
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="button"
+                  className="button"
+                  onClick={redefinirSenha}
+                  disabled={processando}
+                >
+                  {processando
+                    ? 'Redefinindo...'
+                    : 'Redefinir senha'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
