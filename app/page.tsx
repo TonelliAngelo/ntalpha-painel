@@ -80,14 +80,14 @@ export default function Dashboard(){
     .reduce((s,p)=>s+(Number(p.valor)||0),0);
 
   const cards=[
-    ['Imóveis cadastrados',total],
-    ['Disponíveis',disponiveis],
-    ['Publicados no site',publicados],
-    ['Destaques',destaques],
-    ['Clientes',clients],
-    ['Condomínios',condos],
-    ['Contatos',leads.length],
-    ['Vendidos / inativos',indisponiveis],
+    ['Imóveis cadastrados',total,'/imoveis'],
+    ['Disponíveis',disponiveis,'/imoveis'],
+    ['Publicados no site',publicados,'/imoveis'],
+    ['Destaques',destaques,'/imoveis'],
+    ['Clientes',clients,'/clientes'],
+    ['Condomínios',condos,'/condominios'],
+    ['Contatos',leads.length,'/contatos'],
+    ['Vendidos / inativos',indisponiveis,'/imoveis'],
   ];
 
   return <div className="shell">
@@ -105,11 +105,17 @@ export default function Dashboard(){
       {erro&&<div className="status">{erro}</div>}
 
       <section className="cards">
-        {cards.map(([label,value])=>
-          <article className="stat" key={String(label)}>
+        {cards.map(([label,value,href])=>
+          <a
+            className="stat dashboard-stat-link"
+            href={String(href)}
+            key={String(label)}
+            aria-label={`Abrir ${label}`}
+          >
             <span>{label}</span>
             <strong>{loading?'—':value}</strong>
-          </article>
+            <small>Abrir módulo →</small>
+          </a>
         )}
       </section>
 
