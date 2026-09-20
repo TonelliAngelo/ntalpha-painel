@@ -373,3 +373,37 @@ aside nav{display:grid;gap:7px;margin-top:28px}aside nav a{padding:13px 14px;bor
     padding:14px;
   }
 }
+
+
+/* =========================================================
+   NT ALPHA - Botões auxiliares do Dashboard
+   ========================================================= */
+.panel .secondary-button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:max-content;
+  min-height:38px;
+  padding:9px 14px;
+  border:1px solid var(--green-2);
+  border-radius:7px;
+  background:#fff;
+  color:var(--green-2);
+  font-size:13px;
+  font-weight:700;
+  line-height:1;
+  text-decoration:none;
+  transition:.2s ease;
+}
+
+.panel .secondary-button:hover{
+  background:var(--green-2);
+  color:#fff;
+  box-shadow:0 5px 14px rgba(11,102,85,.12);
+}
+
+@media(max-width:600px){
+  .panel .secondary-button{
+    width:100%;
+  }
+}
