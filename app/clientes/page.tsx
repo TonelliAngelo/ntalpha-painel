@@ -55,6 +55,7 @@ export default function Page() {
   const [imoveis, setImoveis] = useState<Imovel[]>([]);
   const [loadingImoveis, setLoadingImoveis] = useState(false);
   const [erroImoveis, setErroImoveis] = useState('');
+  const [viewClient, setViewClient] = useState<C | null>(null);
 
   async function load() {
     const { data } = await db
@@ -110,6 +111,7 @@ export default function Page() {
   }
 
   function novo() {
+    setViewClient(null);
     setF(vazio);
     setEditId(null);
     setImoveis([]);
@@ -117,7 +119,23 @@ export default function Page() {
     setOpen(true);
   }
 
+  function visualizar(c: C) {
+    setF({
+      nome: c.nome ?? '',
+      telefone: c.telefone ?? '',
+      email: c.email ?? '',
+      cpf: c.cpf ?? '',
+      observacoes: c.observacoes ?? '',
+      aceita_novidades: !!c.aceita_novidades,
+    });
+    setEditId(null);
+    setOpen(false);
+    setViewClient(c);
+    carregarImoveisDoCliente(c.id);
+  }
+
   function editar(c: C) {
+    setViewClient(null);
     setF({
       nome: c.nome ?? '',
       telefone: c.telefone ?? '',
@@ -191,6 +209,63 @@ export default function Page() {
           </div>
           <button onClick={novo}>+ Novo cliente</button>
         </header>
+
+        {viewClient && (
+          <section className="panel">
+            <div style={{display:'flex',justifyContent:'space-between',gap:16,alignItems:'flex-start',flexWrap:'wrap'}}>
+              <div>
+                <span className="eyebrow">CADASTRO DO CLIENTE</span>
+                <h2 style={{marginBottom:4}}>{viewClient.nome}</h2>
+                <p className="page-intro" style={{margin:0}}>Visualização somente leitura.</p>
+              </div>
+              <div className="actions">
+                <button type="button" onClick={()=>editar(viewClient)}>Editar cadastro</button>
+                <button type="button" className="secondary-button" onClick={()=>setViewClient(null)}>Fechar</button>
+              </div>
+            </div>
+
+            <div className="grid" style={{marginTop:22}}>
+              <div><small>Telefone / WhatsApp</small><br/><strong>{viewClient.telefone || '—'}</strong></div>
+              <div><small>E-mail</small><br/><strong>{viewClient.email || '—'}</strong></div>
+              <div><small>CPF</small><br/><strong>{viewClient.cpf || '—'}</strong></div>
+              <div><small>Novidades</small><br/><strong>{viewClient.aceita_novidades ? 'Autorizado' : 'Não autorizado'}</strong></div>
+            </div>
+
+            {viewClient.observacoes && (
+              <div style={{marginTop:18}}>
+                <small>Observações</small>
+                <p>{viewClient.observacoes}</p>
+              </div>
+            )}
+
+            <section style={{marginTop:28,paddingTop:24,borderTop:'1px solid #e5d8bd'}}>
+              <span className="eyebrow">CARTEIRA DO CLIENTE</span>
+              <h2 style={{marginBottom:4}}>Imóveis vinculados</h2>
+              <p className="page-intro" style={{marginTop:0}}>Imóveis em que este cliente é o proprietário atual.</p>
+
+              {loadingImoveis ? (
+                <div className="empty"><strong>Carregando imóveis...</strong></div>
+              ) : erroImoveis ? (
+                <div className="status">{erroImoveis}</div>
+              ) : imoveis.length === 0 ? (
+                <div className="empty"><strong>Nenhum imóvel vinculado atualmente.</strong></div>
+              ) : (
+                <div className="data-list">
+                  {imoveis.map(imovel=>(
+                    <article className="data-card crud-card" key={imovel.id}>
+                      <div>
+                        <strong>{imovel.codigo} — {imovel.titulo}</strong>
+                        <span>{[imovel.tipo,imovel.bairro,imovel.cidade].filter(Boolean).join(' · ') || 'Localização não informada'}</span>
+                      </div>
+                      <div><small>Valor</small><b>{dinheiro(imovel.valor)}</b></div>
+                      <div><small>Status</small><b>{imovel.status || '—'}</b></div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          </section>
+        )}
 
         {open && (
           <section className="panel form quick-form">
@@ -369,6 +444,7 @@ export default function Page() {
                   </div>
 
                   <div className="row-actions">
+                    <button className="secondary-button" onClick={() => visualizar(c)}>Visualizar</button>
                     <button onClick={() => editar(c)}>Editar</button>
                     <button
                       className="danger-button"
