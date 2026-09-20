@@ -52,8 +52,8 @@ export default function Imoveis(){
  async function load(){
   const[a,b,c]=await Promise.all([
    db.from('properties').select('*').order('created_at',{ascending:false}),
-   db.from('clients').select('id,nome,telefone').eq('ativo',true).order('nome',{ascending:true}),
-   db.from('condominiums').select('id,nome').eq('ativo',true).order('nome',{ascending:true})
+   db.from('clients').select('id,nome,telefone').order('nome',{ascending:true}),
+   db.from('condominiums').select('id,nome').order('nome',{ascending:true})
   ]);
   if(a.error)setMsg('Erro ao carregar imóveis: '+a.error.message);else setRows((a.data??[]) as P[]);
   if(b.error)setMsg('Erro ao carregar clientes: '+b.error.message);else setClients((b.data??[]) as Client[]);
