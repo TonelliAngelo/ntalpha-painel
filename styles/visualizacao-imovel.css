@@ -1,1 +1,48 @@
 
+/* NT ALPHA - Visualização administrativa compacta do imóvel */
+.property-admin-view{display:grid;gap:16px}
+.property-admin-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}
+.property-admin-head h2{margin:5px 0 3px}
+.property-admin-head .page-intro{margin:0}
+.property-admin-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.property-admin-summary>div{padding:14px 16px;border:1px solid #e8ddc8;border-radius:10px;background:#faf8f2;display:flex;flex-direction:column;gap:4px}
+.property-admin-summary small,.property-admin-fields small,.property-admin-note small{font-size:12px;color:#6c7672}
+.property-admin-summary strong{font-size:17px;color:#075b47}
+.property-admin-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.property-admin-card{padding:18px;border:1px solid #e8ddc8;border-radius:12px;background:#fff}
+.property-admin-card h3{margin:0 0 14px;color:#075b47;font-size:18px}
+.property-admin-fields{display:grid;grid-template-columns:1fr 1fr;gap:14px 22px}
+.property-admin-fields>div{display:flex;flex-direction:column;gap:3px}
+.property-admin-fields strong{font-size:14px}
+.property-admin-wide{width:100%}
+.property-admin-note{margin-top:14px;padding-top:12px;border-top:1px solid #eee6d8}
+.property-admin-note p,.property-admin-description{margin:5px 0 0;line-height:1.55;white-space:pre-wrap}
+.property-admin-tags{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}
+.property-admin-tags span{padding:6px 10px;border:1px solid #e3d3af;border-radius:999px;background:#faf5e8;font-size:12px;font-weight:700;color:#075b47}
+.property-admin-media-title{display:flex;justify-content:space-between;gap:15px;align-items:flex-start}
+.property-admin-media-title h3{margin-bottom:3px}
+.property-admin-media-title p{margin:0 0 12px;color:#6c7672;font-size:13px}
+.property-admin-thumbs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
+.property-admin-thumbs button{position:relative;padding:0;border:1px solid #e5dac4;border-radius:9px;overflow:hidden;background:#f5f2eb;cursor:pointer;aspect-ratio:4/3}
+.property-admin-thumbs img{width:100%;height:100%;object-fit:cover;display:block}
+.property-admin-thumbs button:hover{transform:translateY(-1px);box-shadow:0 5px 15px rgba(0,0,0,.09)}
+.property-admin-thumbs span{position:absolute;left:6px;bottom:6px;padding:3px 6px;border-radius:5px;background:rgba(7,91,71,.9);color:#fff;font-size:10px;font-weight:800}
+.property-admin-video{margin-top:16px;display:grid;gap:7px}
+.property-admin-video video{width:min(520px,100%);border-radius:10px;background:#111}
+.property-admin-lightbox{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:30px}
+.property-admin-lightbox-content{max-width:min(1100px,86vw);max-height:88vh;display:flex;flex-direction:column;align-items:center;gap:9px}
+.property-admin-lightbox-content img{max-width:100%;max-height:80vh;object-fit:contain;border-radius:8px}
+.property-admin-lightbox-content span{color:#fff;font-weight:700}
+.property-admin-lightbox-close,.property-admin-lightbox-prev,.property-admin-lightbox-next{position:absolute;border:0;background:rgba(255,255,255,.14);color:#fff;cursor:pointer;border-radius:999px}
+.property-admin-lightbox-close{right:24px;top:20px;width:44px;height:44px;font-size:30px}
+.property-admin-lightbox-prev,.property-admin-lightbox-next{top:50%;transform:translateY(-50%);width:48px;height:48px;font-size:36px}
+.property-admin-lightbox-prev{left:22px}.property-admin-lightbox-next{right:22px}
+@media(max-width:950px){.property-admin-thumbs{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:760px){
+ .property-admin-summary{grid-template-columns:1fr 1fr}
+ .property-admin-columns{grid-template-columns:1fr}
+ .property-admin-fields{grid-template-columns:1fr}
+ .property-admin-thumbs{grid-template-columns:repeat(3,1fr)}
+ .property-admin-lightbox{padding:15px}
+ .property-admin-lightbox-prev{left:8px}.property-admin-lightbox-next{right:8px}
+}
