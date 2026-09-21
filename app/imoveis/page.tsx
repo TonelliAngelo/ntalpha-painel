@@ -49,6 +49,7 @@ export default function Imoveis(){
  const[ownerObs,setOwnerObs]=useState('');
  const[msg,setMsg]=useState('');
  const[busy,setBusy]=useState(false);
+ const[lightbox,setLightbox]=useState<number|null>(null);
 
  async function load(){
   const[a,b,c]=await Promise.all([
@@ -193,50 +194,53 @@ export default function Imoveis(){
   <header><div><span className="eyebrow">CADASTROS</span><h1>Imóveis</h1><p className="page-intro">Cadastre, consulte, edite, inative ou exclua imóveis.</p></div><a className="button" href="/imoveis/novo">+ Novo imóvel</a></header>
   {msg&&<div className="status">{msg}</div>}
 
-  {view&&<section className="panel property-view">
-   <div className="property-view-head">
+  {view&&<section className="panel property-admin-view">
+   <div className="property-admin-head">
     <div><span className="eyebrow">FICHA DO IMÓVEL</span><h2>{view.codigo??'—'} · {view.titulo}</h2><p className="page-intro">{view.tipo} · {view.bairro??'—'} · {view.cidade??'—'}</p></div>
-    <div className="actions"><button type="button" onClick={()=>{const p=view;setView(null);void abrir(p)}}>Editar cadastro</button><button type="button" className="secondary-button" onClick={()=>{setView(null);setMedia([]);setOwner(null);setOwnerId('');setOwnerObs('');setMsg('')}}>← Voltar para imóveis</button></div>
+    <div className="actions"><button type="button" onClick={()=>{const p=view;setView(null);void abrir(p)}}>Editar cadastro</button><button type="button" className="secondary-button" onClick={()=>{setView(null);setLightbox(null);setMedia([]);setOwner(null);setOwnerId('');setOwnerObs('');setMsg('')}}>← Voltar para imóveis</button></div>
    </div>
 
-   <div className="property-view-kpis">
+   <div className="property-admin-summary">
     <div><small>Valor de venda</small><strong>{view.valor!=null?view.valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'—'}</strong></div>
     <div><small>Área útil</small><strong>{view.area_util!=null?`${view.area_util} m²`:'—'}</strong></div>
     <div><small>Área total</small><strong>{view.area_total!=null?`${view.area_total} m²`:'—'}</strong></div>
-    <div><small>Dormitórios</small><strong>{view.dormitorios??0}</strong></div>
-    <div><small>Vagas</small><strong>{view.vagas??0}</strong></div>
+    <div><small>Status</small><strong>{view.status}</strong></div>
    </div>
 
-   <div className="property-view-gallery">
-    <div className="property-view-cover">{photos[0]?<img src={url(photos.find(x=>x.principal)?.path??photos[0].path)} alt={view.titulo}/>:<div className="property-view-no-photo">Sem foto cadastrada</div>}</div>
-    {photos.length>1&&<div className="property-view-thumbs">{photos.slice(0,5).map(x=><img key={x.id} src={url(x.path)} alt={x.nome_arquivo??'Foto do imóvel'}/>)}</div>}
-   </div>
-
-   <div className="property-view-grid">
-    <section className="property-view-card"><span className="eyebrow">LOCALIZAÇÃO</span><h3>Imóvel e endereço</h3><div className="property-view-fields">
-     <div><small>Condomínio / Empreendimento</small><strong>{condominiums.find(c=>c.id===view.condominium_id)?.nome??'Sem condomínio'}</strong></div>
-     <div><small>Cidade</small><strong>{view.cidade??'—'}</strong></div><div><small>Bairro / Região</small><strong>{view.bairro??'—'}</strong></div><div><small>Endereço</small><strong>{view.endereco??'—'}</strong></div>
-     <div><small>Bloco / Torre</small><strong>{view.bloco_torre??'—'}</strong></div><div><small>Unidade</small><strong>{view.unidade??'—'}</strong></div><div><small>Complemento</small><strong>{view.complemento??'—'}</strong></div><div><small>Andar</small><strong>{view.andar??'—'}</strong></div>
+   <div className="property-admin-columns">
+    <section className="property-admin-card"><h3>Dados do imóvel</h3><div className="property-admin-fields">
+     <div><small>Tipo</small><strong>{view.tipo}</strong></div><div><small>Dormitórios</small><strong>{view.dormitorios}</strong></div><div><small>Suítes</small><strong>{view.suites}</strong></div><div><small>Banheiros</small><strong>{view.banheiros}</strong></div><div><small>Vagas</small><strong>{view.vagas}</strong></div><div><small>Andar</small><strong>{view.andar??'—'}</strong></div><div><small>Ano de construção</small><strong>{view.ano_construcao??'—'}</strong></div><div><small>Mobiliado</small><strong>{view.mobiliado==='sim'?'Sim':view.mobiliado==='parcial'?'Parcialmente':view.mobiliado==='nao'?'Não':'—'}</strong></div>
     </div></section>
 
-    <section className="property-view-card"><span className="eyebrow">PROPRIETÁRIO</span><h3>Contato interno</h3><div className="property-view-fields">
+    <section className="property-admin-card"><h3>Localização</h3><div className="property-admin-fields">
+     <div><small>Condomínio</small><strong>{condominiums.find(c=>c.id===view.condominium_id)?.nome??'Sem condomínio'}</strong></div><div><small>Cidade</small><strong>{view.cidade??'—'}</strong></div><div><small>Bairro / Região</small><strong>{view.bairro??'—'}</strong></div><div><small>Endereço</small><strong>{view.endereco??'—'}</strong></div><div><small>Bloco / Torre</small><strong>{view.bloco_torre??'—'}</strong></div><div><small>Unidade</small><strong>{view.unidade??'—'}</strong></div><div><small>Complemento</small><strong>{view.complemento??'—'}</strong></div>
+    </div></section>
+
+    <section className="property-admin-card"><h3>Proprietário</h3><div className="property-admin-fields">
      <div><small>Nome</small><strong>{clients.find(c=>c.id===owner?.client_id)?.nome??'—'}</strong></div><div><small>Telefone</small><strong>{clients.find(c=>c.id===owner?.client_id)?.telefone??'—'}</strong></div>
-    </div>{owner?.observacoes&&<div className="property-view-note"><small>Observações internas</small><p>{owner.observacoes}</p></div>}</section>
+    </div>{owner?.observacoes&&<div className="property-admin-note"><small>Observações internas</small><p>{owner.observacoes}</p></div>}</section>
 
-    <section className="property-view-card"><span className="eyebrow">CARACTERÍSTICAS</span><h3>Dados do imóvel</h3><div className="property-view-fields">
-     <div><small>Tipo</small><strong>{view.tipo}</strong></div><div><small>Suítes</small><strong>{view.suites??0}</strong></div><div><small>Banheiros</small><strong>{view.banheiros??0}</strong></div><div><small>Ano de construção</small><strong>{view.ano_construcao??'—'}</strong></div><div><small>Mobiliado</small><strong>{view.mobiliado==='sim'?'Sim':view.mobiliado==='parcial'?'Parcialmente':view.mobiliado==='nao'?'Não':'—'}</strong></div>
-    </div>{(view.caracteristicas??[]).length>0&&<div className="property-view-tags">{(view.caracteristicas??[]).map(x=><span key={x}>{x}</span>)}</div>}{view.outras_caracteristicas&&<p className="property-view-description">{view.outras_caracteristicas}</p>}</section>
-
-    <section className="property-view-card"><span className="eyebrow">VALORES</span><h3>Custos do imóvel</h3><div className="property-view-fields">
-     <div><small>Venda</small><strong>{view.valor!=null?view.valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'—'}</strong></div><div><small>Condomínio</small><strong>{view.valor_condominio!=null?view.valor_condominio.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'—'}</strong></div><div><small>IPTU</small><strong>{view.valor_iptu!=null?view.valor_iptu.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'—'}</strong></div>
+    <section className="property-admin-card"><h3>Valores e publicação</h3><div className="property-admin-fields">
+     <div><small>Venda</small><strong>{view.valor!=null?view.valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'—'}</strong></div><div><small>Condomínio</small><strong>{view.valor_condominio!=null?view.valor_condominio.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'—'}</strong></div><div><small>IPTU</small><strong>{view.valor_iptu!=null?view.valor_iptu.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'—'}</strong></div><div><small>Publicado no site</small><strong>{view.publicar_site?'Sim':'Não'}</strong></div><div><small>Destaque</small><strong>{view.destaque?'Sim':'Não'}</strong></div>
     </div></section>
    </div>
 
-   <section className="property-view-card property-view-wide"><span className="eyebrow">APRESENTAÇÃO</span><h3>Descrição do imóvel</h3><p className="property-view-description">{view.descricao??'Nenhuma descrição cadastrada.'}</p></section>
+   <section className="property-admin-card property-admin-wide"><h3>Características e descrição</h3>
+    {(view.caracteristicas??[]).length>0&&<div className="property-admin-tags">{(view.caracteristicas??[]).map(x=><span key={x}>{x}</span>)}</div>}
+    {view.outras_caracteristicas&&<p>{view.outras_caracteristicas}</p>}<p className="property-admin-description">{view.descricao??'Nenhuma descrição cadastrada.'}</p>
+   </section>
 
-   {video&&<section className="property-view-card property-view-wide"><span className="eyebrow">VÍDEO</span><h3>Apresentação em vídeo</h3><div className="property-video-card"><video controls preload="metadata" src={url(video.path)}/></div></section>}
+   <section className="property-admin-card property-admin-wide"><div className="property-admin-media-title"><div><h3>Fotos do imóvel</h3><p>Clique em uma imagem para ampliar.</p></div><strong>{photos.length} foto(s)</strong></div>
+    {photos.length===0?<div className="media-help">Nenhuma foto cadastrada.</div>:<div className="property-admin-thumbs">{photos.map((x,i)=><button type="button" key={x.id} onClick={()=>setLightbox(i)} aria-label={`Ampliar foto ${i+1}`}><img src={url(x.path)} alt={x.nome_arquivo??`Foto ${i+1}`}/>{x.principal&&<span>CAPA</span>}</button>)}</div>}
+    {video&&<div className="property-admin-video"><small>Vídeo cadastrado</small><video controls preload="metadata" src={url(video.path)}/></div>}
+   </section>
 
-   <section className="property-view-card property-view-wide property-view-management"><div><span className="eyebrow">GESTÃO E PUBLICAÇÃO</span><h3>Situação do imóvel</h3></div><div className="property-view-statuses"><span><small>Status</small><strong>{view.status}</strong></span><span><small>Site</small><strong>{view.publicar_site?'Publicado':'Não publicado'}</strong></span><span><small>Destaque</small><strong>{view.destaque?'Sim':'Não'}</strong></span></div></section>
+   {lightbox!==null&&photos[lightbox]&&<div className="property-admin-lightbox" role="dialog" aria-modal="true" onClick={()=>setLightbox(null)}>
+    <button type="button" className="property-admin-lightbox-close" onClick={()=>setLightbox(null)}>×</button>
+    {photos.length>1&&<button type="button" className="property-admin-lightbox-prev" onClick={e=>{e.stopPropagation();setLightbox((lightbox-1+photos.length)%photos.length)}}>‹</button>}
+    <div className="property-admin-lightbox-content" onClick={e=>e.stopPropagation()}><img src={url(photos[lightbox].path)} alt={photos[lightbox].nome_arquivo??`Foto ${lightbox+1}`}/><span>{lightbox+1} de {photos.length}</span></div>
+    {photos.length>1&&<button type="button" className="property-admin-lightbox-next" onClick={e=>{e.stopPropagation();setLightbox((lightbox+1)%photos.length)}}>›</button>}
+   </div>}
   </section>}
 
   {edit&&<section className="panel form quick-form">
