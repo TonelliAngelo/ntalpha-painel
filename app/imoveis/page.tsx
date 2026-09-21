@@ -42,6 +42,7 @@ export default function Imoveis(){
  const[busca,setBusca]=useState('');
  const[status,setStatus]=useState('');
  const[edit,setEdit]=useState<P|null>(null);
+ const[view,setView]=useState<P|null>(null);
  const[media,setMedia]=useState<Media[]>([]);
  const[owner,setOwner]=useState<Owner|null>(null);
  const[ownerId,setOwnerId]=useState('');
@@ -75,6 +76,19 @@ export default function Imoveis(){
   setMedia((m.data??[]) as Media[]);
   const own=(o.data??null) as Owner|null;
   setOwner(own);setOwnerId(own?.client_id??'');setOwnerObs(own?.observacoes??'');
+  setBusy(false);window.scrollTo({top:0,behavior:'smooth'});
+ }
+
+ async function visualizar(p:P){
+  setBusy(true);setMsg('');
+  const[m,o]=await Promise.all([
+   db.from('property_images').select('id,property_id,path,ordem,tipo,principal,nome_arquivo').eq('property_id',p.id).order('ordem'),
+   db.from('property_owners').select('id,property_id,client_id,data_inicio,data_fim,observacoes').eq('property_id',p.id).is('data_fim',null).maybeSingle()
+  ]);
+  if(m.error){setBusy(false);return setMsg('Erro ao carregar mídias: '+m.error.message)}
+  if(o.error){setBusy(false);return setMsg('Erro ao carregar proprietário: '+o.error.message)}
+  setEdit(null);setView({...p,caracteristicas:p.caracteristicas??[]});setMedia((m.data??[]) as Media[]);
+  const own=(o.data??null) as Owner|null;setOwner(own);setOwnerId(own?.client_id??'');setOwnerObs(own?.observacoes??'');
   setBusy(false);window.scrollTo({top:0,behavior:'smooth'});
  }
 
@@ -286,7 +300,7 @@ export default function Imoveis(){
   </section>}
 
   <section className="panel"><div className="toolbar"><input placeholder="Buscar por código, título ou bairro" value={busca} onChange={e=>setBusca(e.target.value)}/><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Todos os status</option><option value="disponivel">Disponível</option><option value="reservado">Reservado</option><option value="vendido">Vendido</option><option value="inativo">Inativo</option></select></div>
-   {list.length===0?<div className="empty"><b>Nenhum imóvel encontrado.</b></div>:<div className="data-list">{list.map(p=><article className="data-card crud-card" key={p.id}><div><strong>{p.codigo??'Código automático'} · {p.titulo}</strong><span>{p.bairro??'—'} · {p.cidade??'—'}</span></div><div><small>Status</small><b>{p.status}</b></div><div className="row-actions"><button disabled={busy} onClick={()=>abrir(p)}>Editar</button><button className="danger-button" disabled={busy} onClick={()=>excluir(p)}>Excluir</button></div></article>)}</div>}
+   {list.length===0?<div className="empty"><b>Nenhum imóvel encontrado.</b></div>:<div className="data-list">{list.map(p=><article className="data-card crud-card" key={p.id}><div><strong>{p.codigo??'Código automático'} · {p.titulo}</strong><span>{p.bairro??'—'} · {p.cidade??'—'}</span></div><div><small>Status</small><b>{p.status}</b></div><div className="row-actions"><button className="secondary-button" disabled={busy} onClick={()=>visualizar(p)}>Visualizar</button><button disabled={busy} onClick={()=>abrir(p)}>Editar</button><button className="danger-button" disabled={busy} onClick={()=>excluir(p)}>Excluir</button></div></article>)}</div>}
   </section>
  </main></div>
 }
