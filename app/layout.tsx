@@ -1,4 +1,5 @@
 import './globals.css';
+import '../styles/visualizacao-imovel.css';
 import type { ReactNode } from 'react';
 import AuthGate from '@/components/AuthGate';
 
