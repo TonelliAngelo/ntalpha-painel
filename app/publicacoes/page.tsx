@@ -28,6 +28,22 @@ type Publication = {
   last_error: string | null;
 };
 
+type HistoryItem = {
+  id: string;
+  property_id: string;
+  publication_id: string | null;
+  channel: string;
+  action: string;
+  previous_status: string | null;
+  new_status: string | null;
+  previous_enabled: boolean | null;
+  new_enabled: boolean | null;
+  actor_user_id: string | null;
+  actor_name: string | null;
+  details: string | null;
+  created_at: string;
+};
+
 const CHANNELS = [
   { key: 'site', label: 'Site NT ALPHA', icon: '🌐' },
   { key: 'olx', label: 'OLX', icon: '🟠' },
@@ -58,11 +74,17 @@ function statusLabel(publication: Publication | undefined) {
   return 'Ativo / pendente';
 }
 
-function statusClass(publication: Publication | undefined) {
-  if (!publication?.enabled) return 'Não publicado';
-  if (publication.status === 'publicado') return 'Publicado';
-  if (publication.status === 'erro') return 'Erro';
-  return 'Ativo / pendente';
+function formatDate(value: string) {
+  return new Date(value).toLocaleString('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  });
+}
+
+function actionLabel(action: string) {
+  if (action === 'ativar') return 'Ativação';
+  if (action === 'desativar') return 'Desativação';
+  return action;
 }
 
 export default function PublicacoesPage() {
@@ -70,12 +92,14 @@ export default function PublicacoesPage() {
 
   const [properties, setProperties] = useState<Property[]>([]);
   const [publications, setPublications] = useState<Publication[]>([]);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [busca, setBusca] = useState('');
   const [filtroCanal, setFiltroCanal] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('');
   const [msg, setMsg] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingHistory, setLoadingHistory] = useState(true);
 
   async function load() {
     setLoading(true);
@@ -105,8 +129,32 @@ export default function PublicacoesPage() {
     setLoading(false);
   }
 
+  async function loadHistory() {
+    setLoadingHistory(true);
+
+    const { data, error } = await db
+      .from('publication_history')
+      .select(
+        'id,property_id,publication_id,channel,action,previous_status,new_status,previous_enabled,new_enabled,actor_user_id,actor_name,details,created_at'
+      )
+      .order('created_at', { ascending: false })
+      .limit(30);
+
+    if (error) {
+      setMsg((current) =>
+        current ? current : 'Histórico indisponível: ' + error.message
+      );
+      setHistory([]);
+    } else {
+      setHistory((data ?? []) as HistoryItem[]);
+    }
+
+    setLoadingHistory(false);
+  }
+
   useEffect(() => {
     void load();
+    void loadHistory();
   }, []);
 
   function pubFor(propertyId: string, channel: string) {
@@ -115,12 +163,67 @@ export default function PublicacoesPage() {
     );
   }
 
+  async function registerHistory(
+    property: Property,
+    publication: Publication,
+    channel: string,
+    enabled: boolean
+  ) {
+    const { data: authData } = await db.auth.getUser();
+    const user = authData.user;
+
+    const actorName =
+      user?.user_metadata?.full_name ||
+      user?.user_metadata?.name ||
+      user?.email ||
+      'Usuário autenticado';
+
+    const newStatus = enabled
+      ? channel === 'site'
+        ? 'publicado'
+        : 'pendente'
+      : 'nao_publicado';
+
+    const action = enabled ? 'ativar' : 'desativar';
+
+    const details = JSON.stringify({
+      property_codigo: property.codigo,
+      property_titulo: property.titulo,
+      channel_label: channelLabel(channel),
+    });
+
+    const { error } = await db.from('publication_history').insert({
+      property_id: property.id,
+      publication_id: publication.id,
+      channel,
+      action,
+      previous_status: publication.status,
+      new_status: newStatus,
+      previous_enabled: publication.enabled,
+      new_enabled: enabled,
+      actor_user_id: user?.id ?? null,
+      actor_name: actorName,
+      details,
+    });
+
+    if (error) {
+      return (
+        'A publicação foi alterada, mas o histórico não pôde ser registrado: ' +
+        error.message
+      );
+    }
+
+    return null;
+  }
+
   async function toggle(property: Property, channel: string) {
     const publication = pubFor(property.id, channel);
 
     if (!publication) {
       setMsg(
-        `O canal ${channelLabel(channel)} não está cadastrado para ${property.codigo ?? property.titulo}.`
+        `O canal ${channelLabel(channel)} não está cadastrado para ${
+          property.codigo ?? property.titulo
+        }.`
       );
       return;
     }
@@ -186,13 +289,33 @@ export default function PublicacoesPage() {
       }
     }
 
+    const historyError = await registerHistory(
+      property,
+      publication,
+      channel,
+      enabled
+    );
+
     setProperties((current) =>
       current.map((item) =>
         item.id === property.id
-          ? { ...item, publicar_site: channel === 'site' ? enabled : item.publicar_site }
+          ? {
+              ...item,
+              publicar_site:
+                channel === 'site' ? enabled : item.publicar_site,
+            }
           : item
       )
     );
+
+    const nextStatus =
+      channel === 'site'
+        ? enabled
+          ? 'publicado'
+          : 'nao_publicado'
+        : enabled
+          ? 'pendente'
+          : 'nao_publicado';
 
     setPublications((current) =>
       current.map((item) =>
@@ -200,31 +323,25 @@ export default function PublicacoesPage() {
           ? {
               ...item,
               enabled,
-              status:
-                channel === 'site'
-                  ? enabled
-                    ? 'publicado'
-                    : 'nao_publicado'
-                  : enabled
-                    ? 'pendente'
-                    : 'nao_publicado',
+              status: nextStatus,
               last_error: null,
             }
           : item
       )
     );
 
-    setMsg(
-      `${channelLabel(channel)}: ${
-        enabled
-          ? channel === 'site'
-            ? 'publicado'
-            : 'ativado / pendente'
-          : 'não publicado'
-      }.`
-    );
+    const baseMessage = `${channelLabel(channel)}: ${
+      enabled
+        ? channel === 'site'
+          ? 'publicado'
+          : 'ativado / pendente'
+        : 'não publicado'
+    }.`;
+
+    setMsg(historyError ? `${baseMessage} ${historyError}` : baseMessage);
 
     setBusyId(null);
+    void loadHistory();
   }
 
   const filtered = properties.filter((property) => {
@@ -289,17 +406,14 @@ export default function PublicacoesPage() {
             <span>Imóveis cadastrados</span>
             <strong>{totalImoveis}</strong>
           </article>
-
           <article className="stat">
             <span>Publicados no site</span>
             <strong>{publicadosSite}</strong>
           </article>
-
           <article className="stat">
             <span>Canais ativos</span>
             <strong>{ativos}</strong>
           </article>
-
           <article className="stat">
             <span>Ativos / pendentes</span>
             <strong>{pendentes}</strong>
@@ -313,7 +427,6 @@ export default function PublicacoesPage() {
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
             />
-
             <select
               value={filtroCanal}
               onChange={(e) => setFiltroCanal(e.target.value)}
@@ -325,7 +438,6 @@ export default function PublicacoesPage() {
                 </option>
               ))}
             </select>
-
             <select
               value={filtroStatus}
               onChange={(e) => setFiltroStatus(e.target.value)}
@@ -436,13 +548,11 @@ export default function PublicacoesPage() {
                         <strong>
                           {property.codigo ?? 'Sem código'} · {property.titulo}
                         </strong>
-
                         <div className="page-intro">
                           {[property.bairro, property.cidade]
                             .filter(Boolean)
                             .join(' · ') || 'Localização não informada'}
                         </div>
-
                         <small>{moeda(property.valor)}</small>
                       </td>
 
@@ -538,143 +648,131 @@ export default function PublicacoesPage() {
               </table>
             )}
           </div>
-            ) : filtered.length === 0 ? (
-              <div className="empty">
-                <strong>Nenhum imóvel encontrado.</strong>
-              </div>
-            ) : (
+        </section>
+
+        <section className="panel">
+          <h2>Histórico de publicação</h2>
+          <p className="page-intro">
+            Últimas 30 alterações realizadas nos canais de publicação.
+          </p>
+
+          {loadingHistory ? (
+            <div className="empty">
+              <strong>Carregando histórico...</strong>
+            </div>
+          ) : history.length === 0 ? (
+            <div className="empty">
+              <strong>Nenhuma alteração registrada ainda.</strong>
+            </div>
+          ) : (
+            <div
+              style={{
+                overflowX: 'auto',
+                width: '100%',
+                WebkitOverflowScrolling: 'touch',
+              }}
+            >
               <table
                 style={{
                   width: '100%',
+                  minWidth: 900,
                   borderCollapse: 'collapse',
-                  minWidth: 1100,
                 }}
               >
                 <thead>
                   <tr>
-                    <th style={{ textAlign: 'left', padding: '14px 10px' }}>
+                    <th style={{ textAlign: 'left', padding: '12px 10px' }}>
+                      Data
+                    </th>
+                    <th style={{ textAlign: 'left', padding: '12px 10px' }}>
+                      Usuário
+                    </th>
+                    <th style={{ textAlign: 'left', padding: '12px 10px' }}>
                       Imóvel
                     </th>
-
-                    {CHANNELS.map((channel) => (
-                      <th
-                        key={channel.key}
-                        style={{
-                          textAlign: 'left',
-                          padding: '14px 10px',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {channel.icon} {channel.label}
-                      </th>
-                    ))}
-
-                    <th style={{ textAlign: 'left', padding: '14px 10px' }}>
+                    <th style={{ textAlign: 'left', padding: '12px 10px' }}>
+                      Canal
+                    </th>
+                    <th style={{ textAlign: 'left', padding: '12px 10px' }}>
                       Ação
+                    </th>
+                    <th style={{ textAlign: 'left', padding: '12px 10px' }}>
+                      Alteração
                     </th>
                   </tr>
                 </thead>
-
                 <tbody>
-                  {filtered.map((property) => (
-                    <tr key={property.id}>
-                      <td
-                        style={{
-                          padding: '16px 10px',
-                          borderTop: '1px solid rgba(0,0,0,.08)',
-                          minWidth: 260,
-                        }}
-                      >
-                        <strong>
-                          {property.codigo ?? 'Sem código'} · {property.titulo}
-                        </strong>
+                  {history.map((item) => {
+                    const property = properties.find(
+                      (p) => p.id === item.property_id
+                    );
 
-                        <div className="page-intro">
-                          {[property.bairro, property.cidade]
-                            .filter(Boolean)
-                            .join(' · ') || 'Localização não informada'}
-                        </div>
-
-                        <small>{moeda(property.valor)}</small>
-                      </td>
-
-                      {CHANNELS.map((channel) => {
-                        const publication = pubFor(property.id, channel.key);
-                        const label = statusLabel(publication);
-                        const isBusy = busyId === publication?.id;
-                        const enabled =
-                          channel.key === 'site'
-                            ? property.publicar_site
-                            : Boolean(publication?.enabled);
-
-                        return (
-                          <td
-                            key={channel.key}
-                            style={{
-                              padding: '16px 10px',
-                              borderTop: '1px solid rgba(0,0,0,.08)',
-                              verticalAlign: 'top',
-                            }}
-                          >
-                            <div style={{ marginBottom: 8 }}>
-                              <strong>{label}</strong>
-                            </div>
-
-                            <button
-                              type="button"
-                              className={
-                                enabled
-                                  ? 'secondary-button'
-                                  : 'button'
-                              }
-                              disabled={!publication || Boolean(busyId)}
-                              onClick={() =>
-                                void toggle(property, channel.key)
-                              }
-                            >
-                              {isBusy
-                                ? 'Processando...'
-                                : enabled
-                                  ? 'Desativar'
-                                  : 'Ativar'}
-                            </button>
-
-                            {publication?.last_error && (
-                              <div
-                                style={{
-                                  marginTop: 8,
-                                  maxWidth: 180,
-                                  fontSize: 12,
-                                }}
-                              >
-                                {publication.last_error}
-                              </div>
-                            )}
-                          </td>
-                        );
-                      })}
-
-                      <td
-                        style={{
-                          padding: '16px 10px',
-                          borderTop: '1px solid rgba(0,0,0,.08)',
-                        }}
-                      >
-                        <a className="secondary-button" href="/imoveis">
-                          Abrir imóveis
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
+                    return (
+                      <tr key={item.id}>
+                        <td
+                          style={{
+                            padding: '12px 10px',
+                            borderTop: '1px solid rgba(0,0,0,.08)',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {formatDate(item.created_at)}
+                        </td>
+                        <td
+                          style={{
+                            padding: '12px 10px',
+                            borderTop: '1px solid rgba(0,0,0,.08)',
+                          }}
+                        >
+                          <strong>
+                            {item.actor_name || 'Usuário autenticado'}
+                          </strong>
+                        </td>
+                        <td
+                          style={{
+                            padding: '12px 10px',
+                            borderTop: '1px solid rgba(0,0,0,.08)',
+                          }}
+                        >
+                          {property
+                            ? `${property.codigo ?? 'Sem código'} · ${property.titulo}`
+                            : item.property_id}
+                        </td>
+                        <td
+                          style={{
+                            padding: '12px 10px',
+                            borderTop: '1px solid rgba(0,0,0,.08)',
+                          }}
+                        >
+                          {channelLabel(item.channel)}
+                        </td>
+                        <td
+                          style={{
+                            padding: '12px 10px',
+                            borderTop: '1px solid rgba(0,0,0,.08)',
+                          }}
+                        >
+                          {actionLabel(item.action)}
+                        </td>
+                        <td
+                          style={{
+                            padding: '12px 10px',
+                            borderTop: '1px solid rgba(0,0,0,.08)',
+                          }}
+                        >
+                          {item.previous_status || '—'} → {item.new_status || '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
-            )}
-          </div>
+            </div>
+          )}
         </section>
 
         <section className="panel">
           <h2>Legenda da V2</h2>
-
           <div className="grid">
             <div>
               <strong>Publicado</strong>
@@ -682,7 +780,6 @@ export default function PublicacoesPage() {
                 O painel considera o canal efetivamente publicado.
               </p>
             </div>
-
             <div>
               <strong>Ativo / pendente</strong>
               <p className="page-intro">
@@ -690,14 +787,12 @@ export default function PublicacoesPage() {
                 ainda não foi executada.
               </p>
             </div>
-
             <div>
               <strong>Não publicado</strong>
               <p className="page-intro">
                 O canal está desativado para o imóvel.
               </p>
             </div>
-
             <div>
               <strong>Erro</strong>
               <p className="page-intro">
