@@ -349,7 +349,7 @@ export default function Imoveis(){
        </select>
       </label>
       <label>CEP<input value={edit.cep??''} onChange={e=>setEdit({...edit,cep:e.target.value})} placeholder="00000-000"/></label>
-      <label>Estado / UF<select value={edit.estado??'SP'} onChange={e=>setEdit({...edit,estado:e.target.value})}><option value="">Selecione...</option><option value="SP">SP</option><option value="RJ">RJ</option><option value="MG">MG</option><option value="PR">PR</option><option value="SC">SC</option><option value="RS">RS</option><option value="ES">ES</option><option value="BA">BA</option><option value="GO">GO</option><option value="DF">DF</option><option value="PE">PE</option><option value="CE">CE</option></select></label>
+      <label>Estado / UF<select value={edit.estado??''} onChange={e=>setEdit({...edit,estado:e.target.value})}><option value="">Selecione...</option><option value="SP">SP</option><option value="RJ">RJ</option><option value="MG">MG</option><option value="PR">PR</option><option value="SC">SC</option><option value="RS">RS</option><option value="ES">ES</option><option value="BA">BA</option><option value="GO">GO</option><option value="DF">DF</option><option value="PE">PE</option><option value="CE">CE</option></select></label>
       <label>Cidade<input value={edit.cidade??''} onChange={e=>setEdit({...edit,cidade:e.target.value})}/></label>
       <label>Bairro / Região<input value={edit.bairro??''} onChange={e=>setEdit({...edit,bairro:e.target.value})}/></label>
       <label>Endereço do imóvel<input value={edit.endereco??''} onChange={e=>setEdit({...edit,endereco:e.target.value})}/></label>
