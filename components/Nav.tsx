@@ -1,3 +1,35 @@
 'use client';
 import Image from 'next/image';import Link from 'next/link';import {usePathname,useRouter} from 'next/navigation';import {supabase} from '@/lib/supabase';import LoggedUser from '@/components/LoggedUser';
-export default function Nav(){const router=useRouter(),pathname=usePathname();async function sair(){await supabase().auth.signOut();router.replace('/login');router.refresh()}const a=(p:string)=>p==='/'?pathname==='/':pathname.startsWith(p);return <aside><div className="panel-logo"><Image src="/images/ntalpha-logo-footer.png" alt="NT ALPHA Imóveis" width={180} height={112} priority/></div><nav><Link className={a('/')?'active':''} href="/">Dashboard</Link><Link className={a('/imoveis')?'active':''} href="/imoveis">Imóveis</Link><Link className={a('/clientes')?'active':''} href="/clientes">Clientes</Link><Link className={a('/condominios')?'active':''} href="/condominios">Condomínios</Link><Link className={a('/contatos')?'active':''} href="/contatos">Contatos</Link><Link className={a('/mala-direta')?'active':''} href="/mala-direta">Mala Direta</Link><Link className={a('/usuarios')?'active':''} href="/usuarios">Usuários</Link><Link className="new-property-link" href="/imoveis/novo">+ Novo imóvel</Link></nav><div className="nav-bottom"><LoggedUser/><button className="ghost" onClick={sair}>Sair</button></div></aside>}
+
+export default function Nav(){
+  const router=useRouter(),pathname=usePathname();
+  async function sair(){
+    await supabase().auth.signOut();
+    router.replace('/login');
+    router.refresh();
+  }
+  const a=(p:string)=>p==='/'?pathname==='/':pathname.startsWith(p);
+
+  return <aside>
+    <div className="panel-logo">
+      <Image src="/images/ntalpha-logo-footer.png" alt="NT ALPHA Imóveis" width={180} height={112} priority/>
+    </div>
+
+    <nav>
+      <Link className={a('/')?'active':''} href="/">Dashboard</Link>
+      <Link className={a('/imoveis')?'active':''} href="/imoveis">Imóveis</Link>
+      <Link className={a('/publicacoes')?'active':''} href="/publicacoes">Publicações</Link>
+      <Link className={a('/clientes')?'active':''} href="/clientes">Clientes</Link>
+      <Link className={a('/condominios')?'active':''} href="/condominios">Condomínios</Link>
+      <Link className={a('/contatos')?'active':''} href="/contatos">Contatos</Link>
+      <Link className={a('/mala-direta')?'active':''} href="/mala-direta">Mala Direta</Link>
+      <Link className={a('/usuarios')?'active':''} href="/usuarios">Usuários</Link>
+      <Link className="new-property-link" href="/imoveis/novo">+ Novo imóvel</Link>
+    </nav>
+
+    <div className="nav-bottom">
+      <LoggedUser/>
+      <button className="ghost" onClick={sair}>Sair</button>
+    </div>
+  </aside>
+}
