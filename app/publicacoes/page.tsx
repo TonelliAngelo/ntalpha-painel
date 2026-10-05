@@ -169,13 +169,27 @@ export default function PublicacoesPage() {
     channel: string,
     enabled: boolean
   ) {
-    const { data: authData } = await db.auth.getUser();
+    const { data: authData, error: authError } = await db.auth.getUser();
+
+    if (authError) {
+      console.error('Erro ao identificar usuário autenticado:', authError);
+      return (
+        'Histórico não registrado: erro ao identificar usuário: ' +
+        authError.message
+      );
+    }
+
     const user = authData.user;
 
+    if (!user) {
+      console.error('Nenhum usuário autenticado foi identificado.');
+      return 'Histórico não registrado: nenhum usuário autenticado foi identificado.';
+    }
+
     const actorName =
-      user?.user_metadata?.full_name ||
-      user?.user_metadata?.name ||
-      user?.email ||
+      user.user_metadata?.full_name ||
+      user.user_metadata?.name ||
+      user.email ||
       'Usuário autenticado';
 
     const newStatus = enabled
@@ -192,7 +206,7 @@ export default function PublicacoesPage() {
       channel_label: channelLabel(channel),
     });
 
-    const { error } = await db.from('publication_history').insert({
+    const historyRecord = {
       property_id: property.id,
       publication_id: publication.id,
       channel,
@@ -201,17 +215,28 @@ export default function PublicacoesPage() {
       new_status: newStatus,
       previous_enabled: publication.enabled,
       new_enabled: enabled,
-      actor_user_id: user?.id ?? null,
+      actor_user_id: user.id,
       actor_name: actorName,
       details,
-    });
+    };
+
+    console.log('Registrando histórico de publicação:', historyRecord);
+
+    const { error } = await db
+      .from('publication_history')
+      .insert(historyRecord);
 
     if (error) {
+      console.error('Erro ao registrar histórico:', error);
+      console.error('Registro enviado:', historyRecord);
+
       return (
-        'A publicação foi alterada, mas o histórico não pôde ser registrado: ' +
+        'Histórico não registrado: ' +
         error.message
       );
     }
+
+    console.log('Histórico registrado com sucesso.');
 
     return null;
   }
@@ -341,7 +366,10 @@ export default function PublicacoesPage() {
     setMsg(historyError ? `${baseMessage} ${historyError}` : baseMessage);
 
     setBusyId(null);
-    void loadHistory();
+
+    // Aguarda a consulta terminar para que o histórico recém-gravado
+    // apareça imediatamente na tela.
+    await loadHistory();
   }
 
   const filtered = properties.filter((property) => {
