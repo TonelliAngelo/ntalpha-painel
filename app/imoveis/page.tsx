@@ -20,8 +20,8 @@ const PROPERTY_FEATURES=[
 ];
 
 type P={
- id:string;codigo:string|null;titulo:string;tipo:string;cidade:string|null;
- bairro:string|null;endereco:string|null;bloco_torre:string|null;unidade:string|null;
+ id:string;codigo:string|null;titulo:string;tipo:string;cidade:string|null;estado:string|null;cep:string|null;
+ bairro:string|null;endereco:string|null;numero:string|null;exibir_endereco:string|null;bloco_torre:string|null;unidade:string|null;
  complemento:string|null;andar:number|null;condominium_id:string|null;valor:number|null;
  valor_condominio:number|null;valor_iptu:number|null;dormitorios:number;suites:number;
  banheiros:number;vagas:number;area_util:number|null;area_total:number|null;
@@ -65,6 +65,7 @@ export default function Imoveis(){
   if(c.error)setMsg('Erro ao carregar condomínios: '+c.error.message);else setCondominiums((c.data??[]) as Condominium[]);
   if(d.error)setMsg('Erro ao carregar publicações: '+d.error.message);else setPublications((d.data??[]) as Publication[]);
  }
+
  useEffect(()=>{void load()},[]);
 
  const url=(path:string)=>db.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
@@ -108,7 +109,6 @@ export default function Imoveis(){
   setEdit({...edit,caracteristicas:current.includes(feature)?current.filter(x=>x!==feature):[...current,feature]});
  }
 
-
  const publicationChannels=[
   {key:'site',label:'Site NT ALPHA',icon:'🌐'},
   {key:'olx',label:'OLX',icon:'🟠'},
@@ -149,7 +149,8 @@ export default function Imoveis(){
   setBusy(true);setMsg('');
   const{data:{user}}=await db.auth.getUser();
   const{error}=await db.from('properties').update({
-   titulo:edit.titulo,tipo:edit.tipo,cidade:edit.cidade,bairro:edit.bairro,endereco:edit.endereco,
+   titulo:edit.titulo,tipo:edit.tipo,cidade:edit.cidade,estado:edit.estado,cep:edit.cep,bairro:edit.bairro,
+   endereco:edit.endereco,numero:edit.numero,exibir_endereco:edit.exibir_endereco,
    bloco_torre:edit.bloco_torre,unidade:edit.unidade,complemento:edit.complemento,andar:edit.andar,
    condominium_id:edit.condominium_id,valor:edit.valor,valor_condominio:edit.valor_condominio,
    valor_iptu:edit.valor_iptu,dormitorios:edit.dormitorios,suites:edit.suites,banheiros:edit.banheiros,
@@ -180,7 +181,7 @@ export default function Imoveis(){
    const r=await db.from('property_owners').update({observacoes:ownerObs||null}).eq('id',owner.id);
    if(r.error){setBusy(false);return setMsg('Erro na observação do proprietário: '+r.error.message)}
   }
-  setEdit(null);setMedia([]);setPublications([]);setOwner(null);setOwnerId('');setOwnerObs('');
+  limparEdicao();
   setMsg('Imóvel atualizado.');setBusy(false);void load();
  }
 
@@ -229,16 +230,44 @@ export default function Imoveis(){
  }
 
  async function excluir(p:P){
-  if(!confirm(`Excluir ${p.codigo??''} - ${p.titulo}? Esta ação não pode ser desfeita.`))return;
+  const ativas=publications.filter(x=>x.property_id===p.id&&x.enabled);
+  if(ativas.length>0)return setMsg('Este imóvel possui publicação(ões) ativa(s). Desative os canais antes de excluir o imóvel.');
+  if(!confirm(`Excluir ${p.codigo??''} - ${p.titulo}? Esta ação não pode ser desfeita.\n\nO imóvel não possui canais de publicação ativos.`))return;
   const{error}=await db.from('properties').delete().eq('id',p.id);
   if(error)return setMsg('Não foi possível excluir. O imóvel pode possuir histórico/vínculos. Use status Inativo quando necessário.');
   setMsg('Imóvel excluído.');void load();
  }
 
- const list=rows.filter(p=>(!status||p.status===status)&&[p.codigo,p.titulo,p.bairro,p.cidade].join(' ').toLowerCase().includes(busca.toLowerCase()));
+ const list=rows.filter(p=>(!status||p.status===status)&&[
+  p.codigo,p.titulo,p.bairro,p.cidade,p.cep,p.endereco,
+  p.condominium_id?condominiums.find(c=>c.id===p.condominium_id)?.nome:''
+ ].join(' ').toLowerCase().includes(busca.toLowerCase()));
  const photos=media.filter(x=>x.tipo==='foto').sort((a,b)=>a.ordem-b.ordem),video=media.find(x=>x.tipo==='video');
 
  const n=(value:string)=>value===''?null:Number(value);
+
+ function publicationReadiness(){
+  if(!edit)return {ready:false,missing:[] as string[]};
+  const missing:string[]=[];
+  const fotos=media.filter(x=>x.tipo==='foto');
+  if(!ownerId)missing.push('Proprietário');
+  if(!edit.titulo||edit.titulo.trim().length<10)missing.push('Título com pelo menos 10 caracteres');
+  if(!edit.tipo)missing.push('Tipo do imóvel');
+  if(!edit.cidade)missing.push('Cidade');
+  if(!edit.estado)missing.push('Estado/UF');
+  if(!edit.bairro)missing.push('Bairro / Região');
+  if(!edit.cep)missing.push('CEP');
+  if(!edit.valor||edit.valor<=0)missing.push('Valor de venda');
+  if(!edit.descricao||edit.descricao.trim().length<20)missing.push('Descrição');
+  if(fotos.length===0)missing.push('Pelo menos 1 foto');
+  if(fotos.length>0&&!fotos.some(x=>x.principal))missing.push('Foto de capa');
+  if(edit.exibir_endereco!=='Neighborhood'&&(!edit.endereco||!edit.numero))missing.push('Endereço e número para a exibição selecionada');
+  return {ready:missing.length===0,missing};
+ }
+
+ function limparEdicao(){
+  setEdit(null);setMedia([]);setPublications([]);setOwner(null);setOwnerId('');setOwnerObs('');setLightbox(null);
+ }
 
  return <div className="shell"><Nav/><main className="content">
   <header><div><span className="eyebrow">CADASTROS</span><h1>Imóveis</h1><p className="page-intro">Cadastre, consulte, edite, inative ou exclua imóveis.</p></div><a className="button" href="/imoveis/novo">+ Novo imóvel</a></header>
@@ -247,7 +276,7 @@ export default function Imoveis(){
   {view&&<section className="panel property-admin-view">
    <div className="property-admin-head">
     <div><span className="eyebrow">FICHA DO IMÓVEL</span><h2>{view.codigo??'—'} · {view.titulo}</h2><p className="page-intro">{view.tipo} · {view.bairro??'—'} · {view.cidade??'—'}</p></div>
-    <div className="actions"><button type="button" onClick={()=>{const p=view;setView(null);void abrir(p)}}>Editar cadastro</button><button type="button" className="secondary-button" onClick={()=>{setView(null);setLightbox(null);setMedia([]);setPublications([]);setOwner(null);setOwnerId('');setOwnerObs('');setMsg('')}}>← Voltar para imóveis</button></div>
+    <div className="actions"><button type="button" onClick={()=>{const p=view;setView(null);void abrir(p)}}>Editar cadastro</button><button type="button" className="secondary-button" onClick={()=>{setView(null);limparEdicao();setMsg('')}}>← Voltar para imóveis</button></div>
    </div>
 
    <div className="property-admin-summary">
@@ -263,7 +292,7 @@ export default function Imoveis(){
     </div></section>
 
     <section className="property-admin-card"><h3>Localização</h3><div className="property-admin-fields">
-     <div><small>Condomínio</small><strong>{condominiums.find(c=>c.id===view.condominium_id)?.nome??'Sem condomínio'}</strong></div><div><small>Cidade</small><strong>{view.cidade??'—'}</strong></div><div><small>Bairro / Região</small><strong>{view.bairro??'—'}</strong></div><div><small>Endereço</small><strong>{view.endereco??'—'}</strong></div><div><small>Bloco / Torre</small><strong>{view.bloco_torre??'—'}</strong></div><div><small>Unidade</small><strong>{view.unidade??'—'}</strong></div><div><small>Complemento</small><strong>{view.complemento??'—'}</strong></div>
+     <div><small>Condomínio</small><strong>{condominiums.find(c=>c.id===view.condominium_id)?.nome??'Sem condomínio'}</strong></div><div><small>CEP</small><strong>{view.cep??'—'}</strong></div><div><small>Estado</small><strong>{view.estado??'—'}</strong></div><div><small>Cidade</small><strong>{view.cidade??'—'}</strong></div><div><small>Bairro / Região</small><strong>{view.bairro??'—'}</strong></div><div><small>Endereço</small><strong>{view.endereco??'—'}</strong></div><div><small>Número</small><strong>{view.numero??'—'}</strong></div><div><small>Exibição externa</small><strong>{view.exibir_endereco==='All'?'Endereço completo':view.exibir_endereco==='Street'?'Logradouro':'Somente bairro'}</strong></div><div><small>Bloco / Torre</small><strong>{view.bloco_torre??'—'}</strong></div><div><small>Unidade</small><strong>{view.unidade??'—'}</strong></div><div><small>Complemento</small><strong>{view.complemento??'—'}</strong></div>
     </div></section>
 
     <section className="property-admin-card"><h3>Proprietário</h3><div className="property-admin-fields">
@@ -319,9 +348,13 @@ export default function Imoveis(){
         {condominiums.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
        </select>
       </label>
+      <label>CEP<input value={edit.cep??''} onChange={e=>setEdit({...edit,cep:e.target.value})} placeholder="00000-000"/></label>
+      <label>Estado / UF<select value={edit.estado??'SP'} onChange={e=>setEdit({...edit,estado:e.target.value})}><option value="">Selecione...</option><option value="SP">SP</option><option value="RJ">RJ</option><option value="MG">MG</option><option value="PR">PR</option><option value="SC">SC</option><option value="RS">RS</option><option value="ES">ES</option><option value="BA">BA</option><option value="GO">GO</option><option value="DF">DF</option><option value="PE">PE</option><option value="CE">CE</option></select></label>
       <label>Cidade<input value={edit.cidade??''} onChange={e=>setEdit({...edit,cidade:e.target.value})}/></label>
       <label>Bairro / Região<input value={edit.bairro??''} onChange={e=>setEdit({...edit,bairro:e.target.value})}/></label>
       <label>Endereço do imóvel<input value={edit.endereco??''} onChange={e=>setEdit({...edit,endereco:e.target.value})}/></label>
+      <label>Número<input value={edit.numero??''} onChange={e=>setEdit({...edit,numero:e.target.value})}/></label>
+      <label>Exibição do endereço<select value={edit.exibir_endereco??'Neighborhood'} onChange={e=>setEdit({...edit,exibir_endereco:e.target.value})}><option value="Neighborhood">Somente bairro</option><option value="Street">Logradouro</option><option value="All">Endereço completo</option></select></label>
       <label>Bloco / Torre<input value={edit.bloco_torre??''} onChange={e=>setEdit({...edit,bloco_torre:e.target.value})}/></label>
       <label>Unidade / Apartamento<input value={edit.unidade??''} onChange={e=>setEdit({...edit,unidade:e.target.value})}/></label>
       <label>Complemento<input value={edit.complemento??''} onChange={e=>setEdit({...edit,complemento:e.target.value})}/></label>
@@ -396,26 +429,33 @@ export default function Imoveis(){
     </section>
 
     <section className="form-section">
-     <h2>10. Canais de publicação</h2>
-     <p className="page-intro">Nesta V2, o painel controla o estado dos canais. As integrações externas serão ativadas em etapas futuras.</p>
+     {(()=>{const r=publicationReadiness();return <div className="publication-readiness">
+      <h2>10. Prontidão para publicação</h2>
+      {r.ready?<p><strong>✓ Imóvel pronto para publicação.</strong> Os dados mínimos para o anúncio estão preenchidos.</p>:<><p><strong>⚠ Pendências de publicação</strong></p><ul>{r.missing.map(x=><li key={x}>{x}</li>)}</ul></>}
+     </div>})()}
+    </section>
+
+    <section className="form-section">
+     <h2>11. Canais de publicação</h2>
+     <p className="page-intro">O painel controla o estado dos canais. As integrações externas serão ativadas em etapas futuras, após a validação dos dados do imóvel.</p>
      <div className="grid">
       {publicationChannels.map(ch=>{
        const p=pubFor(ch.key);
        const enabled=ch.key==='site'?edit.publicar_site:(p?.enabled??false);
        return <label key={ch.key} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
-        <span><strong>{ch.icon} {ch.label}</strong><br/><small>{enabled?(p?.status==='publicado'?'Publicado':'Ativo / pendente'):'Não publicado'}</small></span>
+        <span><strong>{ch.icon} {ch.label}</strong><br/><small>{!enabled?'Não publicado':p?.status==='publicado'?'Publicado':p?.status==='erro'?'Erro de publicação':p?.status==='processando'?'Processando':'Ativo / pendente'}</small></span>
         <button type="button" className={enabled?'secondary-button':'button'} disabled={busy||!p} onClick={()=>togglePublication(ch.key)}>{enabled?'Desativar':'Ativar'}</button>
        </label>
       })}
      </div>
     </section>
 
-    <div className="actions"><button disabled={busy}>{busy?'Processando...':'Salvar alterações'}</button><button type="button" className="secondary-button" disabled={busy} onClick={()=>{setEdit(null);setMedia([]);setPublications([]);setOwner(null);setOwnerId('');setOwnerObs('');setMsg('')}}>Cancelar</button></div>
+    <div className="actions"><button disabled={busy}>{busy?'Processando...':'Salvar alterações'}</button><button type="button" className="secondary-button" disabled={busy} onClick={()=>{limparEdicao()}}>Cancelar</button></div>
    </form>
   </section>}
 
-  <section className="panel"><div className="toolbar"><input placeholder="Buscar por código, título ou bairro" value={busca} onChange={e=>setBusca(e.target.value)}/><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Todos os status</option><option value="disponivel">Disponível</option><option value="reservado">Reservado</option><option value="vendido">Vendido</option><option value="inativo">Inativo</option></select></div>
-   {list.length===0?<div className="empty"><b>Nenhum imóvel encontrado.</b></div>:<div className="data-list">{list.map(p=><article className="data-card crud-card" key={p.id}><div><strong>{p.codigo??'Código automático'} · {p.titulo}</strong><span>{p.bairro??'—'} · {p.cidade??'—'}</span></div><div><small>Status</small><b>{p.status}</b></div><div><small>Publicação</small><b>{publications.filter(x=>x.property_id===p.id&&x.enabled).length} canal(is)</b></div><div className="row-actions"><button className="secondary-button" disabled={busy} onClick={()=>visualizar(p)}>Visualizar</button><button disabled={busy} onClick={()=>abrir(p)}>Editar</button><button className="danger-button" disabled={busy} onClick={()=>excluir(p)}>Excluir</button></div></article>)}</div>}
+  <section className="panel"><div className="toolbar"><input placeholder="Buscar por código, título, bairro, cidade, CEP ou condomínio" value={busca} onChange={e=>setBusca(e.target.value)}/><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Todos os status</option><option value="disponivel">Disponível</option><option value="reservado">Reservado</option><option value="vendido">Vendido</option><option value="inativo">Inativo</option></select></div>
+   {list.length===0?<div className="empty"><b>Nenhum imóvel encontrado.</b></div>:<div className="data-list">{list.map(p=><article className="data-card crud-card" key={p.id}><div><strong>{p.codigo??'Código automático'} · {p.titulo}</strong><span>{p.tipo} · {p.bairro??'—'} · {p.cidade??'—'}{p.cep?` · ${p.cep}`:''}</span></div><div><small>Status</small><b>{p.status}</b></div><div><small>Publicação</small><b>{publications.filter(x=>x.property_id===p.id&&x.enabled).length} canal(is)</b></div><div className="row-actions"><button className="secondary-button" disabled={busy} onClick={()=>visualizar(p)}>Visualizar</button><button disabled={busy} onClick={()=>abrir(p)}>Editar</button><button className="danger-button" disabled={busy} onClick={()=>excluir(p)}>Excluir</button></div></article>)}</div>}
   </section>
  </main></div>
 }
