@@ -33,6 +33,7 @@ type Client={id:string;nome:string|null;telefone:string|null};
 type Condominium={id:string;nome:string};
 type Media={id:string;property_id:string;path:string;ordem:number;tipo:'foto'|'video';principal:boolean;nome_arquivo:string|null};
 type Owner={id:string;property_id:string;client_id:string;data_inicio:string;data_fim:string|null;observacoes:string|null};
+type Publication={id:string;property_id:string;channel:string;enabled:boolean;status:string;external_id:string|null;external_url:string|null;last_sync_at:string|null;last_error:string|null};
 
 export default function Imoveis(){
  const db=useMemo(()=>supabase(),[]);
@@ -44,6 +45,7 @@ export default function Imoveis(){
  const[edit,setEdit]=useState<P|null>(null);
  const[view,setView]=useState<P|null>(null);
  const[media,setMedia]=useState<Media[]>([]);
+ const[publications,setPublications]=useState<Publication[]>([]);
  const[owner,setOwner]=useState<Owner|null>(null);
  const[ownerId,setOwnerId]=useState('');
  const[ownerObs,setOwnerObs]=useState('');
@@ -52,14 +54,16 @@ export default function Imoveis(){
  const[lightbox,setLightbox]=useState<number|null>(null);
 
  async function load(){
-  const[a,b,c]=await Promise.all([
+  const[a,b,c,d]=await Promise.all([
    db.from('properties').select('*').order('created_at',{ascending:false}),
    db.from('clients').select('id,nome,telefone').order('nome',{ascending:true}),
-   db.from('condominiums').select('id,nome').order('nome',{ascending:true})
+   db.from('condominiums').select('id,nome').order('nome',{ascending:true}),
+   db.from('property_publications').select('id,property_id,channel,enabled,status,external_id,external_url,last_sync_at,last_error').order('created_at',{ascending:true})
   ]);
   if(a.error)setMsg('Erro ao carregar imóveis: '+a.error.message);else setRows((a.data??[]) as P[]);
   if(b.error)setMsg('Erro ao carregar clientes: '+b.error.message);else setClients((b.data??[]) as Client[]);
   if(c.error)setMsg('Erro ao carregar condomínios: '+c.error.message);else setCondominiums((c.data??[]) as Condominium[]);
+  if(d.error)setMsg('Erro ao carregar publicações: '+d.error.message);else setPublications((d.data??[]) as Publication[]);
  }
  useEffect(()=>{void load()},[]);
 
@@ -67,14 +71,17 @@ export default function Imoveis(){
 
  async function abrir(p:P){
   setBusy(true);setMsg('');
-  const[m,o]=await Promise.all([
+  const[m,o,pp]=await Promise.all([
    db.from('property_images').select('id,property_id,path,ordem,tipo,principal,nome_arquivo').eq('property_id',p.id).order('ordem'),
-   db.from('property_owners').select('id,property_id,client_id,data_inicio,data_fim,observacoes').eq('property_id',p.id).is('data_fim',null).maybeSingle()
+   db.from('property_owners').select('id,property_id,client_id,data_inicio,data_fim,observacoes').eq('property_id',p.id).is('data_fim',null).maybeSingle(),
+   db.from('property_publications').select('id,property_id,channel,enabled,status,external_id,external_url,last_sync_at,last_error').eq('property_id',p.id).order('created_at',{ascending:true})
   ]);
   if(m.error){setBusy(false);return setMsg('Erro ao carregar mídias: '+m.error.message)}
   if(o.error){setBusy(false);return setMsg('Erro ao carregar proprietário: '+o.error.message)}
+  if(pp.error){setBusy(false);return setMsg('Erro ao carregar publicações: '+pp.error.message)}
   setEdit({...p,caracteristicas:p.caracteristicas??[]});
   setMedia((m.data??[]) as Media[]);
+  setPublications((pp.data??[]) as Publication[]);
   const own=(o.data??null) as Owner|null;
   setOwner(own);setOwnerId(own?.client_id??'');setOwnerObs(own?.observacoes??'');
   setBusy(false);window.scrollTo({top:0,behavior:'smooth'});
@@ -82,13 +89,15 @@ export default function Imoveis(){
 
  async function visualizar(p:P){
   setBusy(true);setMsg('');
-  const[m,o]=await Promise.all([
+  const[m,o,pp]=await Promise.all([
    db.from('property_images').select('id,property_id,path,ordem,tipo,principal,nome_arquivo').eq('property_id',p.id).order('ordem'),
-   db.from('property_owners').select('id,property_id,client_id,data_inicio,data_fim,observacoes').eq('property_id',p.id).is('data_fim',null).maybeSingle()
+   db.from('property_owners').select('id,property_id,client_id,data_inicio,data_fim,observacoes').eq('property_id',p.id).is('data_fim',null).maybeSingle(),
+   db.from('property_publications').select('id,property_id,channel,enabled,status,external_id,external_url,last_sync_at,last_error').eq('property_id',p.id).order('created_at',{ascending:true})
   ]);
   if(m.error){setBusy(false);return setMsg('Erro ao carregar mídias: '+m.error.message)}
   if(o.error){setBusy(false);return setMsg('Erro ao carregar proprietário: '+o.error.message)}
-  setEdit(null);setView({...p,caracteristicas:p.caracteristicas??[]});setMedia((m.data??[]) as Media[]);
+  if(pp.error){setBusy(false);return setMsg('Erro ao carregar publicações: '+pp.error.message)}
+  setEdit(null);setView({...p,caracteristicas:p.caracteristicas??[]});setMedia((m.data??[]) as Media[]);setPublications((pp.data??[]) as Publication[]);
   const own=(o.data??null) as Owner|null;setOwner(own);setOwnerId(own?.client_id??'');setOwnerObs(own?.observacoes??'');
   setBusy(false);window.scrollTo({top:0,behavior:'smooth'});
  }
@@ -97,6 +106,38 @@ export default function Imoveis(){
   if(!edit)return;
   const current=edit.caracteristicas??[];
   setEdit({...edit,caracteristicas:current.includes(feature)?current.filter(x=>x!==feature):[...current,feature]});
+ }
+
+
+ const publicationChannels=[
+  {key:'site',label:'Site NT ALPHA',icon:'🌐'},
+  {key:'olx',label:'OLX',icon:'🟠'},
+  {key:'zap',label:'ZAP Imóveis',icon:'🔵'},
+  {key:'vivareal',label:'VivaReal',icon:'🟣'},
+  {key:'instagram',label:'Instagram',icon:'📷'},
+  {key:'facebook',label:'Facebook',icon:'🔵'},
+  {key:'google',label:'Google',icon:'🔎'}
+ ];
+
+ function pubFor(channel:string){return publications.find(x=>x.channel===channel)}
+
+ async function togglePublication(channel:string){
+  if(!edit||busy)return;
+  const current=pubFor(channel);
+  if(!current)return setMsg(`Canal ${channel} não está cadastrado para este imóvel.`);
+  if(channel==='site'){
+   setEdit({...edit,publicar_site:!current.enabled});
+   return setMsg('Canal site preparado para alteração. Salve o imóvel para confirmar.');
+  }
+  setBusy(true);setMsg('');
+  const enabled=!current.enabled;
+  const r=await db.from('property_publications').update({
+   enabled,status:enabled?'pendente':'nao_publicado',last_error:null,updated_at:new Date().toISOString()
+  }).eq('id',current.id);
+  if(r.error){setBusy(false);return setMsg('Não foi possível alterar o canal: '+r.error.message)}
+  setPublications(v=>v.map(x=>x.id===current.id?{...x,enabled,status:enabled?'pendente':'nao_publicado',last_error:null}:x));
+  setMsg(`${publicationChannels.find(x=>x.key===channel)?.label??channel}: ${enabled?'habilitado':'desabilitado'}.`);
+  setBusy(false);
  }
 
  async function salvar(e:FormEvent){
@@ -119,6 +160,15 @@ export default function Imoveis(){
   }).eq('id',edit.id);
   if(error){setBusy(false);return setMsg('Não foi possível atualizar: '+error.message)}
 
+  const sitePublication=publications.find(x=>x.channel==='site');
+  if(sitePublication){
+   const siteUpdate=await db.from('property_publications').update({
+    enabled:edit.publicar_site,status:edit.publicar_site?'publicado':'nao_publicado',
+    last_error:null,updated_at:new Date().toISOString()
+   }).eq('id',sitePublication.id);
+   if(siteUpdate.error){setBusy(false);return setMsg('Imóvel salvo, mas falhou ao atualizar o status de publicação do site: '+siteUpdate.error.message)}
+  }
+
   if((owner?.client_id??'')!==ownerId){
    if(owner){
     const r=await db.from('property_owners').update({data_fim:new Date().toISOString()}).eq('id',owner.id);
@@ -130,7 +180,7 @@ export default function Imoveis(){
    const r=await db.from('property_owners').update({observacoes:ownerObs||null}).eq('id',owner.id);
    if(r.error){setBusy(false);return setMsg('Erro na observação do proprietário: '+r.error.message)}
   }
-  setEdit(null);setMedia([]);setOwner(null);setOwnerId('');setOwnerObs('');
+  setEdit(null);setMedia([]);setPublications([]);setOwner(null);setOwnerId('');setOwnerObs('');
   setMsg('Imóvel atualizado.');setBusy(false);void load();
  }
 
@@ -197,7 +247,7 @@ export default function Imoveis(){
   {view&&<section className="panel property-admin-view">
    <div className="property-admin-head">
     <div><span className="eyebrow">FICHA DO IMÓVEL</span><h2>{view.codigo??'—'} · {view.titulo}</h2><p className="page-intro">{view.tipo} · {view.bairro??'—'} · {view.cidade??'—'}</p></div>
-    <div className="actions"><button type="button" onClick={()=>{const p=view;setView(null);void abrir(p)}}>Editar cadastro</button><button type="button" className="secondary-button" onClick={()=>{setView(null);setLightbox(null);setMedia([]);setOwner(null);setOwnerId('');setOwnerObs('');setMsg('')}}>← Voltar para imóveis</button></div>
+    <div className="actions"><button type="button" onClick={()=>{const p=view;setView(null);void abrir(p)}}>Editar cadastro</button><button type="button" className="secondary-button" onClick={()=>{setView(null);setLightbox(null);setMedia([]);setPublications([]);setOwner(null);setOwnerId('');setOwnerObs('');setMsg('')}}>← Voltar para imóveis</button></div>
    </div>
 
    <div className="property-admin-summary">
@@ -345,12 +395,27 @@ export default function Imoveis(){
      <div className="checks"><label><input type="checkbox" checked={edit.destaque} onChange={e=>setEdit({...edit,destaque:e.target.checked})}/> Destaque</label><label><input type="checkbox" checked={edit.publicar_site} onChange={e=>setEdit({...edit,publicar_site:e.target.checked})}/> Publicar no site</label></div>
     </section>
 
-    <div className="actions"><button disabled={busy}>{busy?'Processando...':'Salvar alterações'}</button><button type="button" className="secondary-button" disabled={busy} onClick={()=>{setEdit(null);setMedia([]);setOwner(null);setOwnerId('');setOwnerObs('');setMsg('')}}>Cancelar</button></div>
+    <section className="form-section">
+     <h2>10. Canais de publicação</h2>
+     <p className="page-intro">Nesta V2, o painel controla o estado dos canais. As integrações externas serão ativadas em etapas futuras.</p>
+     <div className="grid">
+      {publicationChannels.map(ch=>{
+       const p=pubFor(ch.key);
+       const enabled=ch.key==='site'?edit.publicar_site:(p?.enabled??false);
+       return <label key={ch.key} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
+        <span><strong>{ch.icon} {ch.label}</strong><br/><small>{enabled?(p?.status==='publicado'?'Publicado':'Ativo / pendente'):'Não publicado'}</small></span>
+        <button type="button" className={enabled?'secondary-button':'button'} disabled={busy||!p} onClick={()=>togglePublication(ch.key)}>{enabled?'Desativar':'Ativar'}</button>
+       </label>
+      })}
+     </div>
+    </section>
+
+    <div className="actions"><button disabled={busy}>{busy?'Processando...':'Salvar alterações'}</button><button type="button" className="secondary-button" disabled={busy} onClick={()=>{setEdit(null);setMedia([]);setPublications([]);setOwner(null);setOwnerId('');setOwnerObs('');setMsg('')}}>Cancelar</button></div>
    </form>
   </section>}
 
   <section className="panel"><div className="toolbar"><input placeholder="Buscar por código, título ou bairro" value={busca} onChange={e=>setBusca(e.target.value)}/><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Todos os status</option><option value="disponivel">Disponível</option><option value="reservado">Reservado</option><option value="vendido">Vendido</option><option value="inativo">Inativo</option></select></div>
-   {list.length===0?<div className="empty"><b>Nenhum imóvel encontrado.</b></div>:<div className="data-list">{list.map(p=><article className="data-card crud-card" key={p.id}><div><strong>{p.codigo??'Código automático'} · {p.titulo}</strong><span>{p.bairro??'—'} · {p.cidade??'—'}</span></div><div><small>Status</small><b>{p.status}</b></div><div className="row-actions"><button className="secondary-button" disabled={busy} onClick={()=>visualizar(p)}>Visualizar</button><button disabled={busy} onClick={()=>abrir(p)}>Editar</button><button className="danger-button" disabled={busy} onClick={()=>excluir(p)}>Excluir</button></div></article>)}</div>}
+   {list.length===0?<div className="empty"><b>Nenhum imóvel encontrado.</b></div>:<div className="data-list">{list.map(p=><article className="data-card crud-card" key={p.id}><div><strong>{p.codigo??'Código automático'} · {p.titulo}</strong><span>{p.bairro??'—'} · {p.cidade??'—'}</span></div><div><small>Status</small><b>{p.status}</b></div><div><small>Publicação</small><b>{publications.filter(x=>x.property_id===p.id&&x.enabled).length} canal(is)</b></div><div className="row-actions"><button className="secondary-button" disabled={busy} onClick={()=>visualizar(p)}>Visualizar</button><button disabled={busy} onClick={()=>abrir(p)}>Editar</button><button className="danger-button" disabled={busy} onClick={()=>excluir(p)}>Excluir</button></div></article>)}</div>}
   </section>
  </main></div>
 }
