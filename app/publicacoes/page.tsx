@@ -340,11 +340,204 @@ export default function PublicacoesPage() {
         </section>
 
         <section className="panel">
-          <div style={{ overflowX: 'auto' }}>
+          <div
+            style={{
+              overflowX: 'auto',
+              width: '100%',
+              WebkitOverflowScrolling: 'touch',
+            }}
+          >
             {loading ? (
               <div className="empty">
                 <strong>Carregando publicações...</strong>
               </div>
+            ) : filtered.length === 0 ? (
+              <div className="empty">
+                <strong>Nenhum imóvel encontrado.</strong>
+              </div>
+            ) : (
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  minWidth: 1540,
+                  tableLayout: 'fixed',
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th
+                      style={{
+                        width: 280,
+                        minWidth: 280,
+                        textAlign: 'left',
+                        padding: '14px 10px',
+                        verticalAlign: 'middle',
+                      }}
+                    >
+                      Imóvel
+                    </th>
+
+                    {CHANNELS.map((channel) => (
+                      <th
+                        key={channel.key}
+                        style={{
+                          width: 155,
+                          minWidth: 155,
+                          maxWidth: 155,
+                          textAlign: 'left',
+                          padding: '14px 10px',
+                          verticalAlign: 'middle',
+                          whiteSpace: 'normal',
+                          height: 58,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            minHeight: 28,
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          <span>{channel.icon}</span>
+                          <strong>{channel.label}</strong>
+                        </div>
+                      </th>
+                    ))}
+
+                    <th
+                      style={{
+                        width: 140,
+                        minWidth: 140,
+                        textAlign: 'left',
+                        padding: '14px 10px',
+                        verticalAlign: 'middle',
+                      }}
+                    >
+                      Ação
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {filtered.map((property) => (
+                    <tr key={property.id}>
+                      <td
+                        style={{
+                          width: 280,
+                          minWidth: 280,
+                          padding: '16px 10px',
+                          borderTop: '1px solid rgba(0,0,0,.08)',
+                          verticalAlign: 'top',
+                        }}
+                      >
+                        <strong>
+                          {property.codigo ?? 'Sem código'} · {property.titulo}
+                        </strong>
+
+                        <div className="page-intro">
+                          {[property.bairro, property.cidade]
+                            .filter(Boolean)
+                            .join(' · ') || 'Localização não informada'}
+                        </div>
+
+                        <small>{moeda(property.valor)}</small>
+                      </td>
+
+                      {CHANNELS.map((channel) => {
+                        const publication = pubFor(property.id, channel.key);
+                        const label = statusLabel(publication);
+                        const isBusy = busyId === publication?.id;
+                        const enabled =
+                          channel.key === 'site'
+                            ? property.publicar_site
+                            : Boolean(publication?.enabled);
+
+                        return (
+                          <td
+                            key={channel.key}
+                            style={{
+                              width: 155,
+                              minWidth: 155,
+                              maxWidth: 155,
+                              padding: '16px 10px',
+                              borderTop: '1px solid rgba(0,0,0,.08)',
+                              verticalAlign: 'top',
+                            }}
+                          >
+                            <div
+                              style={{
+                                minHeight: 44,
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                                lineHeight: 1.25,
+                                marginBottom: 8,
+                                overflowWrap: 'break-word',
+                              }}
+                            >
+                              <strong>{label}</strong>
+                            </div>
+
+                            <button
+                              type="button"
+                              className={
+                                enabled ? 'secondary-button' : 'button'
+                              }
+                              style={{
+                                minWidth: 96,
+                                minHeight: 38,
+                                whiteSpace: 'nowrap',
+                              }}
+                              disabled={!publication || Boolean(busyId)}
+                              onClick={() =>
+                                void toggle(property, channel.key)
+                              }
+                            >
+                              {isBusy
+                                ? 'Processando...'
+                                : enabled
+                                  ? 'Desativar'
+                                  : 'Ativar'}
+                            </button>
+
+                            {publication?.last_error && (
+                              <div
+                                style={{
+                                  marginTop: 8,
+                                  maxWidth: 135,
+                                  fontSize: 12,
+                                  lineHeight: 1.3,
+                                  overflowWrap: 'anywhere',
+                                }}
+                              >
+                                {publication.last_error}
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+
+                      <td
+                        style={{
+                          width: 140,
+                          minWidth: 140,
+                          padding: '16px 10px',
+                          borderTop: '1px solid rgba(0,0,0,.08)',
+                          verticalAlign: 'top',
+                        }}
+                      >
+                        <a className="secondary-button" href="/imoveis">
+                          Abrir imóveis
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
             ) : filtered.length === 0 ? (
               <div className="empty">
                 <strong>Nenhum imóvel encontrado.</strong>
