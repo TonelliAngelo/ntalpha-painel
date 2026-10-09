@@ -6,9 +6,6 @@ export const revalidate = 0;
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const PUBLIC_BASE_URL =
-  process.env.NTALPHA_PUBLIC_BASE_URL ?? 'https://painel.ntalpha.com.br';
-
 const STORAGE_BUCKET = 'property-images';
 
 function xml(value: unknown) {
@@ -32,31 +29,37 @@ function int(value: unknown) {
 }
 
 function propertyType(tipo: string | null) {
-  const t = (tipo ?? '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+  const t = (tipo ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
 
   if (t.includes('apart')) return 'Residential / Apartment';
   if (t.includes('casa de condominio') || t.includes('casa em condominio')) return 'Residential / Condo';
-  if (t === 'casa' || t.includes('casa ')) return 'Residential / Home';
+  if (t === 'casa' || t.startsWith('casa ')) return 'Residential / Home';
   if (t.includes('sobrado')) return 'Residential / Sobrado';
   if (t.includes('cobertura')) return 'Residential / Penthouse';
   if (t.includes('flat')) return 'Residential / Flat';
   if (t.includes('kitnet') || t.includes('conjugado')) return 'Residential / Kitnet';
   if (t.includes('studio')) return 'Residential / Studio';
   if (t.includes('loft')) return 'Residential / Loft';
-  if (t.includes('chacara') || t.includes('chácara')) return 'Residential / Farm Ranch';
-  if (t.includes('fazenda') || t.includes('sitio') || t.includes('sítio')) return 'Residential / Agricultural';
+  if (t.includes('chacara')) return 'Residential / Farm Ranch';
+  if (t.includes('fazenda') || t.includes('sitio')) return 'Residential / Agricultural';
   if (t.includes('terreno') || t.includes('lote')) return 'Residential / Land Lot';
-  if (t.includes('galpao') || t.includes('galpão') || t.includes('deposito') || t.includes('depósito') || t.includes('armazem') || t.includes('armazém')) return 'Commercial / Industrial';
+  if (t.includes('galpao') || t.includes('deposito') || t.includes('armazem')) return 'Commercial / Industrial';
   if (t.includes('sala') || t.includes('conjunto')) return 'Commercial / Office';
-  if (t.includes('loja') || t.includes('salao') || t.includes('salão') || t.includes('ponto comercial')) return 'Commercial / Business';
-  if (t.includes('consultorio') || t.includes('consultório')) return 'Commercial / Consultorio';
-  if (t.includes('predio') || t.includes('prédio')) return 'Commercial / Edificio Comercial';
+  if (t.includes('loja') || t.includes('salao') || t.includes('ponto comercial')) return 'Commercial / Business';
+  if (t.includes('consultorio')) return 'Commercial / Consultorio';
+  if (t.includes('predio')) return 'Commercial / Edificio Comercial';
   return 'Commercial / Building';
 }
 
 function usageType(tipo: string | null) {
   const t = (tipo ?? '').toLowerCase();
-  const residential = ['apart', 'casa', 'sobrado', 'cobertura', 'flat', 'kitnet', 'studio', 'loft', 'chac', 'fazenda', 'sitio', 'sítio', 'terreno', 'lote'];
+  const residential = [
+    'apart', 'casa', 'sobrado', 'cobertura', 'flat', 'kitnet',
+    'studio', 'loft', 'chac', 'fazenda', 'sitio', 'terreno', 'lote'
+  ];
   return residential.some((x) => t.includes(x)) ? 'Residential' : 'Commercial';
 }
 
@@ -65,17 +68,37 @@ function displayAddress(exibir: boolean | null | undefined) {
 }
 
 function fotoUrl(path: string) {
-  return `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${path}`;
+  return `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${path
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/')}`;
 }
 
 function normalizeDescription(description: string | null) {
-  const clean = (description ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  return clean.length >= 50 ? clean.slice(0, 3000) : `${clean} NT ALPHA Imóveis.`;
+  const clean = (description ?? '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return clean.length >= 50
+    ? clean.slice(0, 3000)
+    : `${clean} NT ALPHA Imóveis.`;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     return new NextResponse('Integração NT ALPHA não configurada.', { status: 500 });
+  }
+
+  const channel = new URL(request.url).searchParams.get('channel');
+
+  // ZAP e Viva Real utilizam VRSync, mas mantemos feeds separados
+  // para que o painel possa controlar o canal de forma independente.
+  if (channel !== 'zap' && channel !== 'vivareal') {
+    return new NextResponse(
+      'Informe ?channel=zap ou ?channel=vivareal.',
+      { status: 400 }
+    );
   }
 
   const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
@@ -85,7 +108,7 @@ export async function GET() {
   const { data: publications, error: pubError } = await db
     .from('property_publications')
     .select('property_id,channel,enabled')
-    .in('channel', ['olx', 'zap', 'vivareal'])
+    .eq('channel', channel)
     .eq('enabled', true);
 
   if (pubError) {
@@ -98,7 +121,13 @@ export async function GET() {
     return new NextResponse(
       `<?xml version="1.0" encoding="UTF-8"?>
 <ListingDataFeed xmlns="http://www.vivareal.com/schemas/1.0/VRSync"><Listings/></ListingDataFeed>`,
-      { status: 200, headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'no-store' } }
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/xml; charset=utf-8',
+          'Cache-Control': 'no-store',
+        },
+      }
     );
   }
 
@@ -119,25 +148,27 @@ export async function GET() {
 
   const ids = (properties ?? []).map((p) => p.id);
 
-  const { data: images } = await db
+  const { data: images, error: imageError } = await db
     .from('property_images')
     .select('property_id,path,tipo,principal,ordem')
     .in('property_id', ids)
     .eq('tipo', 'foto')
     .order('ordem', { ascending: true });
 
-  const enabledByProperty = new Map<string, Set<string>>();
-  for (const p of publications ?? []) {
-    if (!enabledByProperty.has(p.property_id)) enabledByProperty.set(p.property_id, new Set());
-    enabledByProperty.get(p.property_id)!.add(p.channel);
+  if (imageError) {
+    return new NextResponse(`Erro nas imagens: ${imageError.message}`, { status: 500 });
   }
 
   const xmlListings = (properties ?? []).map((p) => {
     const type = propertyType(p.tipo);
     const usage = usageType(p.tipo);
+
     const propertyImages = (images ?? [])
-      .filter((i) => i.property_id === p.id && /\\.(jpe?g)$/i.test(i.path ?? ''))
+      .filter((i) => i.property_id === p.id && /\.(jpe?g)$/i.test(i.path ?? ''))
       .sort((a, b) => Number(a.ordem ?? 0) - Number(b.ordem ?? 0));
+
+    // O ZAP/Viva Real exige imagens válidas para a publicação.
+    if (propertyImages.length < 5) return '';
 
     const price = int(p.valor);
     const condo = int(p.valor_condominio);
@@ -164,31 +195,48 @@ export async function GET() {
       `<PropertyType>${xml(type)}</PropertyType>`,
       `<UsageType>${xml(usage)}</UsageType>`,
       price !== null ? `<ListPrice currency="BRL">${price}</ListPrice>` : '',
-      condo !== null ? `<PropertyAdministrationFee currency="BRL">${condo}</PropertyAdministrationFee>` : '',
-      iptu !== null ? `<Iptu currency="BRL" period="Yearly">${iptu}</Iptu>` : '',
+      condo !== null
+        ? `<PropertyAdministrationFee currency="BRL">${condo}</PropertyAdministrationFee>`
+        : '',
+      iptu !== null
+        ? `<Iptu currency="BRL" period="Yearly">${iptu}</Iptu>`
+        : '',
       `<Description>${cdata(normalizeDescription(p.descricao))}</Description>`,
-      livingArea !== null ? `<LivingArea unit="square metres">${livingArea}</LivingArea>` : '',
-      lotArea !== null ? `<LotArea unit="square metres">${lotArea}</LotArea>` : '',
+      livingArea !== null
+        ? `<LivingArea unit="square metres">${livingArea}</LivingArea>`
+        : '',
+      lotArea !== null
+        ? `<LotArea unit="square metres">${lotArea}</LotArea>`
+        : '',
       bedrooms !== null ? `<Bedrooms>${bedrooms}</Bedrooms>` : '',
       suites !== null ? `<Suites>${suites}</Suites>` : '',
       bathrooms !== null ? `<Bathrooms>${bathrooms}</Bathrooms>` : '',
       garage !== null ? `<Garage>${garage}</Garage>` : '',
-      p.ano_construcao ? `<YearBuilt>${int(p.ano_construcao)}</YearBuilt>` : '',
+      p.ano_construcao
+        ? `<YearBuilt>${int(p.ano_construcao)}</YearBuilt>`
+        : '',
       Array.isArray(p.caracteristicas)
-        ? `<Features>${p.caracteristicas.map((f: string) => `<Feature>${cdata(f)}</Feature>`).join('')}</Features>`
+        ? `<Features>${p.caracteristicas
+            .map((f: string) => `<Feature>${cdata(f)}</Feature>`)
+            .join('')}</Features>`
         : '',
     ].join('');
 
-    if (propertyImages.length < 5) return '';
-
     const media = propertyImages
       .map((i, index) => {
-        const primary = i.principal || (index === 0 && !propertyImages.some((x) => x.principal));
-        return `<Item medium="image" caption="${xml(`img${index + 1}`)}"${primary ? ' primary="true"' : ''}>${xml(fotoUrl(i.path))}</Item>`;
+        const primary =
+          i.principal ||
+          (index === 0 && !propertyImages.some((x) => x.principal));
+
+        return `<Item medium="image" caption="${xml(`img${index + 1}`)}"${
+          primary ? ' primary="true"' : ''
+        }>${xml(fotoUrl(i.path))}</Item>`;
       })
       .join('');
 
-    const detailUrl = `${process.env.NTALPHA_SITE_BASE_URL ?? 'https://www.ntalpha.com.br'}/imoveis/${encodeURIComponent(p.codigo ?? p.id)}`;
+    const detailUrl =
+      `${process.env.NTALPHA_SITE_BASE_URL ?? 'https://www.ntalpha.com.br'}` +
+      `/imoveis/${encodeURIComponent(p.codigo ?? p.id)}`;
 
     return `<Listing>
       <ListingID>${xml(p.codigo ?? p.id)}</ListingID>
@@ -208,7 +256,8 @@ export async function GET() {
     </Listing>`;
   }).join('');
 
-  const publishDate = new Date().toISOString().replace(/\\.\\d{3}Z$/, '');
+  const publishDate = new Date().toISOString().replace(/\.\d{3}Z$/, '');
+
   const document = `<?xml version="1.0" encoding="UTF-8"?>
 <ListingDataFeed xmlns="http://www.vivareal.com/schemas/1.0/VRSync"
  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
