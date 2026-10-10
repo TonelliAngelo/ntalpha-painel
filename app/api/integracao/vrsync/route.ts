@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getServerSupabaseConfig } from '@/lib/server-env';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const STORAGE_BUCKET = 'property-images';
 
 function xml(value: unknown) {
@@ -67,8 +66,8 @@ function displayAddress(exibir: boolean | null | undefined) {
   return exibir === false ? 'Neighborhood' : 'All';
 }
 
-function fotoUrl(path: string) {
-  return `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${path
+function fotoUrl(baseUrl: string, path: string) {
+  return `${baseUrl}/storage/v1/object/public/${STORAGE_BUCKET}/${path
     .split('/')
     .map(encodeURIComponent)
     .join('/')}`;
@@ -86,14 +85,14 @@ function normalizeDescription(description: string | null) {
 }
 
 export async function GET(request: Request) {
-  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+  const config = await getServerSupabaseConfig();
+
+  if (!config.url || !config.secretKey) {
     return new NextResponse('Integração NT ALPHA não configurada.', { status: 500 });
   }
 
   const channel = new URL(request.url).searchParams.get('channel');
 
-  // ZAP e Viva Real utilizam VRSync, mas mantemos feeds separados
-  // para que o painel possa controlar o canal de forma independente.
   if (channel !== 'zap' && channel !== 'vivareal') {
     return new NextResponse(
       'Informe ?channel=zap ou ?channel=vivareal.',
@@ -101,7 +100,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  const db = createClient(config.url, config.secretKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
@@ -167,7 +166,6 @@ export async function GET(request: Request) {
       .filter((i) => i.property_id === p.id && /\.(jpe?g)$/i.test(i.path ?? ''))
       .sort((a, b) => Number(a.ordem ?? 0) - Number(b.ordem ?? 0));
 
-    // O ZAP/Viva Real exige imagens válidas para a publicação.
     if (propertyImages.length < 5) return '';
 
     const price = int(p.valor);
@@ -230,7 +228,7 @@ export async function GET(request: Request) {
 
         return `<Item medium="image" caption="${xml(`img${index + 1}`)}"${
           primary ? ' primary="true"' : ''
-        }>${xml(fotoUrl(i.path))}</Item>`;
+        }>${xml(fotoUrl(config.url, i.path))}</Item>`;
       })
       .join('');
 
