@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getServerSupabaseConfig } from '@/lib/server-env';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-    const secretKey = process.env.SUPABASE_SECRET_KEY;
+    const config = await getServerSupabaseConfig();
 
-    if (!supabaseUrl || !publishableKey || !secretKey) {
+    if (!config.url || !config.publishableKey || !config.secretKey) {
       return NextResponse.json(
         { error: 'Configuração do servidor incompleta.' },
         { status: 500 }
       );
     }
 
-    // Token do usuário que está solicitando a alteração.
     const authorization = request.headers.get('authorization');
 
     if (!authorization?.startsWith('Bearer ')) {
@@ -26,13 +26,8 @@ export async function POST(request: NextRequest) {
 
     const token = authorization.substring(7);
 
-    // Cliente comum: usado somente para validar quem está logado.
-    const authClient = createClient(supabaseUrl, publishableKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
+    const authClient = createClient(config.url, config.publishableKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
       auth: {
         persistSession: false,
         autoRefreshToken: false,
@@ -51,7 +46,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Confere o perfil do usuário autenticado.
     const { data: profile, error: profileError } = await authClient
       .from('profiles')
       .select('nome, role')
@@ -65,7 +59,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Somente Rafael e Nivaldo podem administrar senhas.
     const administradores = ['RAFAEL', 'NIVALDO'];
 
     if (!administradores.includes(String(profile.role).toUpperCase())) {
@@ -104,16 +97,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Cliente administrativo.
-    // A Secret Key existe apenas no servidor.
-    const adminClient = createClient(supabaseUrl, secretKey, {
+    const adminClient = createClient(config.url, config.secretKey, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
       },
     });
 
-    // Confirma que o usuário de destino existe.
     const { data: targetUser, error: targetError } =
       await adminClient.auth.admin.getUserById(userId);
 
@@ -124,7 +114,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Altera somente a senha.
     const { error: updateError } =
       await adminClient.auth.admin.updateUserById(userId, {
         password: novaSenha,
@@ -132,7 +121,6 @@ export async function POST(request: NextRequest) {
 
     if (updateError) {
       console.error('Erro ao redefinir senha:', updateError.message);
-
       return NextResponse.json(
         { error: 'Não foi possível redefinir a senha.' },
         { status: 500 }
@@ -145,7 +133,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Erro na API reset-password:', error);
-
     return NextResponse.json(
       { error: 'Erro interno ao processar a solicitação.' },
       { status: 500 }
