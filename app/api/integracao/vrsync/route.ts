@@ -62,7 +62,12 @@ function usageType(tipo: string | null) {
   return residential.some((x) => t.includes(x)) ? 'Residential' : 'Commercial';
 }
 
-function displayAddress(exibir: boolean | null | undefined) {
+function displayAddress(exibir: string | boolean | null | undefined) {
+  if (typeof exibir === 'string') {
+    if (exibir === 'Neighborhood') return 'Neighborhood';
+    if (exibir === 'Street') return 'Street';
+    if (exibir === 'All') return 'All';
+  }
   return exibir === false ? 'Neighborhood' : 'All';
 }
 
@@ -178,14 +183,15 @@ export async function GET(request: Request) {
     const bathrooms = int(p.banheiros);
     const garage = int(p.vagas);
 
+    const addressVisibility = displayAddress(p.exibir_endereco);
     const address = [
       `<Country abbreviation="BR">Brasil</Country>`,
       `<State abbreviation="${xml(p.estado ?? 'SP')}">${cdata(p.estado ?? 'São Paulo')}</State>`,
       `<City>${cdata(p.cidade)}</City>`,
       `<Neighborhood>${cdata(p.bairro)}</Neighborhood>`,
-      p.endereco ? `<Address>${cdata(p.endereco)}</Address>` : '',
-      p.numero ? `<StreetNumber>${cdata(p.numero)}</StreetNumber>` : '',
-      p.complemento ? `<Complement>${cdata(p.complemento)}</Complement>` : '',
+      addressVisibility !== 'Neighborhood' && p.endereco ? `<Address>${cdata(p.endereco)}</Address>` : '',
+      addressVisibility === 'All' && p.numero ? `<StreetNumber>${cdata(p.numero)}</StreetNumber>` : '',
+      addressVisibility === 'All' && p.complemento ? `<Complement>${cdata(p.complemento)}</Complement>` : '',
       p.cep ? `<PostalCode>${xml(p.cep)}</PostalCode>` : '',
     ].join('');
 

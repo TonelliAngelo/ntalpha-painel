@@ -6,3 +6,10 @@ app/condominios/page.tsx
 app/contatos/page.tsx
 Não substitua nem apague os demais arquivos.
 As telas leem as tabelas existentes clients, condominiums e leads via Supabase.
+
+
+=== PRODUÇÃO 2026-10-10 ===
+Antes de publicar imóveis reais, executar a migration `supabase/2026-10-10-production-hardening.sql` no projeto Supabase de produção.
+Não executar `supabase/schema.sql` em produção.
+Após a migration, fazer novo deploy do projeto e validar: /api/integracao/health, /api/integracao/olx, /api/integracao/vrsync?channel=zap e /api/integracao/vrsync?channel=vivareal.
+A exclusão de mídia e imóvel passa pelos endpoints administrativos `/api/imoveis/media` e `/api/imoveis/excluir`, usando a sessão autenticada e a chave secreta apenas no servidor.
