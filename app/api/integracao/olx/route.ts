@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getServerSupabaseConfig } from '@/lib/server-env';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const STORAGE_BUCKET = 'property-images';
 
 function xml(value: unknown) {
@@ -61,34 +60,8 @@ function subtype(tipo: string | null) {
   return 'Comercial';
 }
 
-function category(tipo: string | null) {
-  const t = normalize(tipo);
-
-  if (
-    t.includes('apart') ||
-    t.includes('cobertura') ||
-    t.includes('flat') ||
-    t.includes('loft') ||
-    t.includes('kitnet') ||
-    t.includes('conjugado') ||
-    t.includes('studio')
-  ) return 'Apartamentos';
-
-  if (t.includes('casa') || t.includes('sobrado')) return 'Casas';
-
-  if (
-    t.includes('terreno') ||
-    t.includes('lote') ||
-    t.includes('chacara') ||
-    t.includes('fazenda') ||
-    t.includes('sitio')
-  ) return 'Terrenos, sítios e fazendas';
-
-  return 'Comércio e indústria';
-}
-
-function fotoUrl(path: string) {
-  return `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${path
+function fotoUrl(baseUrl: string, path: string) {
+  return `${baseUrl}/storage/v1/object/public/${STORAGE_BUCKET}/${path
     .split('/')
     .map(encodeURIComponent)
     .join('/')}`;
@@ -109,11 +82,13 @@ function cappedTitle(value: string | null, fallback: string) {
 }
 
 export async function GET() {
-  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+  const config = await getServerSupabaseConfig();
+
+  if (!config.url || !config.secretKey) {
     return new NextResponse('Integração NT ALPHA não configurada.', { status: 500 });
   }
 
-  const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  const db = createClient(config.url, config.secretKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
@@ -177,7 +152,7 @@ export async function GET() {
       const principal =
         i.principal || (index === 0 && !propertyImages.some((x) => x.principal));
 
-      return `<Foto>${principal ? '<Principal>1</Principal>' : ''}<URLArquivo>${xml(fotoUrl(i.path))}</URLArquivo></Foto>`;
+      return `<Foto>${principal ? '<Principal>1</Principal>' : ''}<URLArquivo>${xml(fotoUrl(config.url, i.path))}</URLArquivo></Foto>`;
     }).join('');
 
     const type = normalize(p.tipo);
