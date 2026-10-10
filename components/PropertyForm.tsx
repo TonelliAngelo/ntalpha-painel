@@ -90,12 +90,8 @@ export default function PropertyForm() {
     titulo: '',
     tipo: 'Casa',
     cidade: 'Barueri',
-    estado: 'SP',
     bairro: 'Alphaville',
-    cep: '',
     endereco: '',
-    numero: '',
-    exibir_endereco: 'Neighborhood',
     bloco_torre: '',
     unidade: '',
     complemento: '',
@@ -360,13 +356,6 @@ export default function PropertyForm() {
       return;
     }
 
-    const existingNames = new Set(photos.map((item) => `${item.file.name}|${item.file.size}`));
-    const duplicate = selected.find((file) => existingNames.has(`${file.name}|${file.size}`));
-    if (duplicate) {
-      setMsg(`A foto "${duplicate.name}" já foi selecionada neste imóvel.`);
-      return;
-    }
-
     const items = selected.map((file) => ({
       id: crypto.randomUUID(),
       file,
@@ -441,14 +430,6 @@ export default function PropertyForm() {
     await db.storage.from('property-images').remove(paths);
   }
 
-  async function sha256(file: File) {
-    const buffer = await file.arrayBuffer();
-    const digest = await crypto.subtle.digest('SHA-256', buffer);
-    return Array.from(new Uint8Array(digest))
-      .map((byte) => byte.toString(16).padStart(2, '0'))
-      .join('');
-  }
-
   async function salvar(e: FormEvent) {
     e.preventDefault();
 
@@ -456,31 +437,6 @@ export default function PropertyForm() {
 
     if (!ownerId) {
       setMsg('Selecione ou cadastre o proprietário do imóvel.');
-      return;
-    }
-
-    if (f.titulo.trim().length < 10) {
-      setMsg('O título deve ter pelo menos 10 caracteres.');
-      return;
-    }
-
-    if (!f.cidade.trim() || !/^[A-Za-z]{2}$/.test(f.estado.trim())) {
-      setMsg('Informe cidade e UF válidas.');
-      return;
-    }
-
-    if (!/^\d{5}-?\d{3}$/.test(f.cep.trim())) {
-      setMsg('Informe um CEP válido.');
-      return;
-    }
-
-    if (!f.bairro.trim()) {
-      setMsg('Informe o bairro/região.');
-      return;
-    }
-
-    if (!f.valor || Number(f.valor) <= 0) {
-      setMsg('Informe o valor de venda.');
       return;
     }
 
@@ -527,12 +483,8 @@ export default function PropertyForm() {
           titulo: f.titulo.trim(),
           tipo: f.tipo,
           cidade: f.cidade.trim() || null,
-          estado: f.estado.trim().toUpperCase() || null,
-          cep: f.cep.trim() || null,
           bairro: f.bairro.trim() || null,
           endereco: f.endereco.trim() || null,
-          numero: f.numero.trim() || null,
-          exibir_endereco: f.exibir_endereco,
           bloco_torre: f.bloco_torre.trim() || null,
           unidade: f.unidade.trim() || null,
           complemento: f.complemento.trim() || null,
@@ -598,36 +550,17 @@ export default function PropertyForm() {
         nome_arquivo: string;
         mime_type: string;
         tamanho_bytes: number;
-        sha256: string;
       }[] = [];
-
-      const seenHashes = new Set<string>();
 
       for (let i = 0; i < photos.length; i++) {
         const photo = photos[i];
 
         setMsg(`Enviando foto ${i + 1} de ${photos.length}...`);
 
-        const hash = await sha256(photo.file);
-        if (seenHashes.has(hash)) {
-          throw new Error(`A foto "${photo.file.name}" é uma duplicata exata de outra foto selecionada.`);
-        }
-        seenHashes.add(hash);
-
-        const { data: duplicate } = await db
-          .from('property_images')
-          .select('id')
-          .eq('property_id', property.id)
-          .eq('sha256', hash)
-          .maybeSingle();
-        if (duplicate) {
-          throw new Error(`A foto "${photo.file.name}" já existe neste imóvel.`);
-        }
-
         const path =
           `${property.id}/fotos/` +
           `${String(i + 1).padStart(2, '0')}-` +
-          `${crypto.randomUUID()}-${safeFileName(photo.file.name)}`;
+          `${crypto.randomUUID()}-nt-alpha-foto.${photo.file.name.split('.').pop()?.toLowerCase() || 'jpg'}`;
 
         const { error: uploadError } = await db.storage
           .from('property-images')
@@ -654,32 +587,15 @@ export default function PropertyForm() {
           nome_arquivo: photo.file.name,
           mime_type: photo.file.type,
           tamanho_bytes: photo.file.size,
-          sha256: hash,
         });
       }
 
       if (video) {
         setMsg('Enviando vídeo do imóvel...');
 
-        const hash = await sha256(video);
-        if (seenHashes.has(hash)) {
-          throw new Error(`O vídeo \"${video.name}\" é uma duplicata exata de outra mídia selecionada.`);
-        }
-        seenHashes.add(hash);
-
-        const { data: duplicate } = await db
-          .from('property_images')
-          .select('id')
-          .eq('property_id', property.id)
-          .eq('sha256', hash)
-          .maybeSingle();
-        if (duplicate) {
-          throw new Error(`O vídeo "${video.name}" já existe neste imóvel.`);
-        }
-
         const path =
           `${property.id}/video/` +
-          `${crypto.randomUUID()}-${safeFileName(video.name)}`;
+          `${crypto.randomUUID()}-nt-alpha-video.${video.name.split('.').pop()?.toLowerCase() || 'mp4'}`;
 
         const { error: videoError } = await db.storage
           .from('property-images')
@@ -706,7 +622,6 @@ export default function PropertyForm() {
           nome_arquivo: video.name,
           mime_type: video.type,
           tamanho_bytes: video.size,
-          sha256: hash,
         });
       }
 
@@ -1000,34 +915,14 @@ export default function PropertyForm() {
 
         <div className="grid">
           <label>
-            Cidade *
+            Cidade
             <input
-              required
               value={f.cidade}
               onChange={(e) => setF({ ...f, cidade: e.target.value })}
             />
           </label>
           <label>
-            Estado / UF *
-            <input
-              required
-              maxLength={2}
-              value={f.estado}
-              onChange={(e) => setF({ ...f, estado: e.target.value.toUpperCase() })}
-            />
-          </label>
-          <label>
-            CEP *
-            <input
-              required
-              inputMode="numeric"
-              value={f.cep}
-              onChange={(e) => setF({ ...f, cep: e.target.value })}
-              placeholder="00000-000"
-            />
-          </label>
-          <label>
-            Bairro / Região *
+            Bairro / Região
             <input
               value={f.bairro}
               onChange={(e) => setF({ ...f, bairro: e.target.value })}
@@ -1039,24 +934,6 @@ export default function PropertyForm() {
               value={f.endereco}
               onChange={(e) => setF({ ...f, endereco: e.target.value })}
             />
-          </label>
-          <label>
-            Número
-            <input
-              value={f.numero}
-              onChange={(e) => setF({ ...f, numero: e.target.value })}
-            />
-          </label>
-          <label>
-            Exibição do endereço
-            <select
-              value={f.exibir_endereco}
-              onChange={(e) => setF({ ...f, exibir_endereco: e.target.value })}
-            >
-              <option value="Neighborhood">Somente bairro</option>
-              <option value="Street">Logradouro</option>
-              <option value="All">Endereço completo</option>
-            </select>
           </label>
           <label>
             Bloco / Torre

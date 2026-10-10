@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getServerSupabaseConfig } from '@/lib/server-env';
+import { NT_ALPHA_PUBLICATION_RULES } from '@/lib/publication-config';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -88,7 +89,7 @@ export async function GET() {
   const { data: props, error: xe } = await db
     .from('properties')
     .select(
-      'id,codigo,titulo,tipo,status,cep,cidade,bairro,valor,area_util,descricao'
+      'id,codigo,titulo,tipo,status,cep,cidade,bairro,valor,area_util,area_total,descricao'
     )
     .in('id', ids);
 
@@ -153,18 +154,17 @@ export async function GET() {
       issues.push('descrição com menos de 50 caracteres');
     }
 
-    if (
-      p.area_util == null &&
-      !/terreno|lote|galpão|galpao|depósito|deposito|armazém|armazem/i.test(
-        p.tipo ?? ''
-      )
-    ) {
+    const isLand = /terreno|lote/i.test(p.tipo ?? '');
+    if (!isLand && p.area_util == null) {
       issues.push('área útil ausente');
     }
+    if (isLand && p.area_total == null) {
+      issues.push('área total do terreno ausente');
+    }
 
-    if (propertyImages.length < 5) {
+    if (propertyImages.length < NT_ALPHA_PUBLICATION_RULES.minFeedPhotos) {
       issues.push(
-        `apenas ${propertyImages.length} fotos JPG/JPEG; o portal exige no mínimo 5`
+        `apenas ${propertyImages.length} fotos JPG/JPEG; o feed exige no mínimo ${NT_ALPHA_PUBLICATION_RULES.minFeedPhotos}`
       );
     }
 

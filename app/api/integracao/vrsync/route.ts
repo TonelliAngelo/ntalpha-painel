@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getServerSupabaseConfig } from '@/lib/server-env';
+import { NT_ALPHA_PUBLICATION, NT_ALPHA_PUBLICATION_RULES } from '@/lib/publication-config';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -62,12 +63,7 @@ function usageType(tipo: string | null) {
   return residential.some((x) => t.includes(x)) ? 'Residential' : 'Commercial';
 }
 
-function displayAddress(exibir: string | boolean | null | undefined) {
-  if (typeof exibir === 'string') {
-    if (exibir === 'Neighborhood') return 'Neighborhood';
-    if (exibir === 'Street') return 'Street';
-    if (exibir === 'All') return 'All';
-  }
+function displayAddress(exibir: boolean | null | undefined) {
   return exibir === false ? 'Neighborhood' : 'All';
 }
 
@@ -84,9 +80,8 @@ function normalizeDescription(description: string | null) {
     .replace(/\s+/g, ' ')
     .trim();
 
-  return clean.length >= 50
-    ? clean.slice(0, 3000)
-    : `${clean} NT ALPHA Imóveis.`;
+  if (clean.length < NT_ALPHA_PUBLICATION_RULES.minDescriptionChars) return null;
+  return clean.slice(0, NT_ALPHA_PUBLICATION_RULES.maxDescriptionChars);
 }
 
 export async function GET(request: Request) {
@@ -169,13 +164,19 @@ export async function GET(request: Request) {
 
     const propertyImages = (images ?? [])
       .filter((i) => i.property_id === p.id && /\.(jpe?g)$/i.test(i.path ?? ''))
-      .sort((a, b) => Number(a.ordem ?? 0) - Number(b.ordem ?? 0));
+      .sort((a, b) => Number(a.ordem ?? 0) - Number(b.ordem ?? 0))
+      .filter((image, index, list) => index === list.findIndex((x) => x.path === image.path))
+      .slice(0, NT_ALPHA_PUBLICATION_RULES.maxFeedPhotos);
 
     if (propertyImages.length < 5) return '';
+
+    const descriptionText = normalizeDescription(p.descricao);
+    if (!descriptionText || propertyImages.length < NT_ALPHA_PUBLICATION_RULES.minFeedPhotos) return '';
 
     const price = int(p.valor);
     const condo = int(p.valor_condominio);
     const iptu = int(p.valor_iptu);
+    const isLand = /terreno|lote/i.test(p.tipo ?? '');
     const livingArea = int(p.area_util);
     const lotArea = int(p.area_total);
     const bedrooms = int(p.dormitorios);
@@ -183,15 +184,14 @@ export async function GET(request: Request) {
     const bathrooms = int(p.banheiros);
     const garage = int(p.vagas);
 
-    const addressVisibility = displayAddress(p.exibir_endereco);
     const address = [
       `<Country abbreviation="BR">Brasil</Country>`,
       `<State abbreviation="${xml(p.estado ?? 'SP')}">${cdata(p.estado ?? 'São Paulo')}</State>`,
       `<City>${cdata(p.cidade)}</City>`,
       `<Neighborhood>${cdata(p.bairro)}</Neighborhood>`,
-      addressVisibility !== 'Neighborhood' && p.endereco ? `<Address>${cdata(p.endereco)}</Address>` : '',
-      addressVisibility === 'All' && p.numero ? `<StreetNumber>${cdata(p.numero)}</StreetNumber>` : '',
-      addressVisibility === 'All' && p.complemento ? `<Complement>${cdata(p.complemento)}</Complement>` : '',
+      p.endereco ? `<Address>${cdata(p.endereco)}</Address>` : '',
+      p.numero ? `<StreetNumber>${cdata(p.numero)}</StreetNumber>` : '',
+      p.complemento ? `<Complement>${cdata(p.complemento)}</Complement>` : '',
       p.cep ? `<PostalCode>${xml(p.cep)}</PostalCode>` : '',
     ].join('');
 
@@ -205,11 +205,11 @@ export async function GET(request: Request) {
       iptu !== null
         ? `<Iptu currency="BRL" period="Yearly">${iptu}</Iptu>`
         : '',
-      `<Description>${cdata(normalizeDescription(p.descricao))}</Description>`,
-      livingArea !== null
+      `<Description>${cdata(descriptionText)}</Description>`,
+      !isLand && livingArea !== null
         ? `<LivingArea unit="square metres">${livingArea}</LivingArea>`
         : '',
-      lotArea !== null
+      isLand && lotArea !== null
         ? `<LotArea unit="square metres">${lotArea}</LotArea>`
         : '',
       bedrooms !== null ? `<Bedrooms>${bedrooms}</Bedrooms>` : '',
@@ -252,10 +252,11 @@ export async function GET(request: Request) {
       <Location displayAddress="${displayAddress(p.exibir_endereco)}">${address}</Location>
       <Media>${media}</Media>
       <ContactInfo>
-        <Name>${cdata(process.env.NTALPHA_PUBLIC_NAME ?? 'NT ALPHA Imóveis')}</Name>
-        <Email>${xml(process.env.NTALPHA_PUBLIC_EMAIL ?? '')}</Email>
-        <Website>${xml(process.env.NTALPHA_SITE_BASE_URL ?? 'https://www.ntalpha.com.br')}</Website>
-        <Telephone>${xml(process.env.NTALPHA_PUBLIC_PHONE ?? '')}</Telephone>
+        <Name>${cdata(NT_ALPHA_PUBLICATION.name)}</Name>
+        <Email>${xml(NT_ALPHA_PUBLICATION.email)}</Email>
+        <Website>${xml(NT_ALPHA_PUBLICATION.website)}</Website>
+        <Telephone>${xml(NT_ALPHA_PUBLICATION.phone)}</Telephone>
+        <Logo>${xml(NT_ALPHA_PUBLICATION.logo)}</Logo>
       </ContactInfo>
     </Listing>`;
   }).join('');
@@ -268,10 +269,10 @@ export async function GET(request: Request) {
  xsi:schemaLocation="http://www.vivareal.com/schemas/1.0/VRSync http://xml.vivareal.com/vrsync.xsd">
  <Header>
   <Provider>${cdata('NT ALPHA Integrador Próprio')}</Provider>
-  <Email>${xml(process.env.NTALPHA_PUBLIC_EMAIL ?? '')}</Email>
-  <ContactName>${cdata(process.env.NTALPHA_PUBLIC_NAME ?? 'NT ALPHA Imóveis')}</ContactName>
+  <Email>${xml(NT_ALPHA_PUBLICATION.email)}</Email>
+  <ContactName>${cdata(NT_ALPHA_PUBLICATION.responsibleName)}</ContactName>
   <PublishDate>${publishDate}</PublishDate>
-  <Telephone>${xml(process.env.NTALPHA_PUBLIC_PHONE ?? '')}</Telephone>
+  <Telephone>${xml(NT_ALPHA_PUBLICATION.phone)}</Telephone>
  </Header>
  <Listings>${xmlListings}</Listings>
 </ListingDataFeed>`;

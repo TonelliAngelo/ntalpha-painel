@@ -70,25 +70,6 @@ export default function Imoveis(){
 
  const url=(path:string)=>db.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 
- async function callAdminApi(endpoint:string, body:Record<string, unknown>){
-  const {data:{session}}=await db.auth.getSession();
-  if(!session?.access_token) throw new Error('Sua sessão expirou. Entre novamente no painel.');
-  const response=await fetch(endpoint,{
-   method:'POST',
-   headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`},
-   body:JSON.stringify(body),
-  });
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok) throw new Error(data?.error??'Operação não concluída.');
-  return data;
- }
-
- async function sha256(file:File){
-  const buffer=await file.arrayBuffer();
-  const digest=await crypto.subtle.digest('SHA-256',buffer);
-  return Array.from(new Uint8Array(digest)).map(byte=>byte.toString(16).padStart(2,'0')).join('');
- }
-
  async function abrir(p:P){
   setBusy(true);setMsg('');
   const[m,o,pp]=await Promise.all([
@@ -214,15 +195,16 @@ export default function Imoveis(){
  }
 
  async function remover(x:Media){
-  if(!confirm(`Excluir ${x.tipo==='video'?'o vídeo':'esta foto'}?\n\nO arquivo será removido definitivamente do Storage e do cadastro.`))return;
-  setBusy(true);setMsg('Removendo mídia definitivamente...');
-  try{
-   await callAdminApi('/api/imoveis/media',{mediaId:x.id});
-   setMedia(v=>v.filter(m=>m.id!==x.id).map((m,i)=>m.tipo==='foto'?{...m,ordem:i+1}:m));
-   setMsg(x.tipo==='video'?'Vídeo removido definitivamente.':'Foto removida definitivamente.');
-  }catch(error){
-   setMsg(error instanceof Error?error.message:'Não foi possível remover a mídia.');
-  }finally{setBusy(false);}
+  if(!confirm(`Excluir ${x.tipo==='video'?'o vídeo':'esta foto'}?`))return;
+  setBusy(true);
+  const s=await db.storage.from(BUCKET).remove([x.path]);
+  if(s.error){setBusy(false);return setMsg('Erro no Storage: '+s.error.message)}
+  const r=await db.from('property_images').delete().eq('id',x.id);
+  if(r.error){
+   setBusy(false);
+   return setMsg('O arquivo físico foi removido, mas o registro não pôde ser excluído: '+r.error.message);
+  }
+  setMedia(v=>v.filter(m=>m.id!==x.id));setMsg(x.tipo==='video'?'Vídeo removido.':'Foto removida.');setBusy(false);
  }
 
  async function fotosNovas(e:ChangeEvent<HTMLInputElement>){
@@ -232,13 +214,9 @@ export default function Imoveis(){
   if(fs.some(f=>!['image/jpeg','image/png','image/webp'].includes(f.type)||f.size>5*1024*1024))return setMsg('Fotos: JPEG, PNG ou WebP, máximo 5 MB cada.');
   setBusy(true);const novos:Media[]=[];
   for(let i=0;i<fs.length;i++){
-   const f=fs[i],ext=f.name.split('.').pop()||'jpg',ordem=atuais.length+i+1;
-   const hash=await sha256(f);
-   const duplicate=await db.from('property_images').select('id').eq('property_id',edit.id).eq('sha256',hash).maybeSingle();
-   if(duplicate.data){setBusy(false);return setMsg(`A foto \"${f.name}\" já existe neste imóvel.`)}
-   const path=`${edit.id}/fotos/${String(ordem).padStart(2,'0')}-${crypto.randomUUID()}.${ext}`;
+   const f=fs[i],ext=f.name.split('.').pop()?.toLowerCase()||'jpg',ordem=atuais.length+i+1,path=`${edit.id}/fotos/${String(ordem).padStart(2,'0')}-${crypto.randomUUID()}-nt-alpha-foto.${ext}`;
    const u=await db.storage.from(BUCKET).upload(path,f,{contentType:f.type,upsert:false});if(u.error){setBusy(false);return setMsg('Falha no upload: '+u.error.message)}
-   const r=await db.from('property_images').insert({property_id:edit.id,path,ordem,tipo:'foto',principal:false,nome_arquivo:f.name,mime_type:f.type,tamanho_bytes:f.size,sha256:hash}).select('id,property_id,path,ordem,tipo,principal,nome_arquivo').single();
+   const r=await db.from('property_images').insert({property_id:edit.id,path,ordem,tipo:'foto',principal:false,nome_arquivo:f.name,mime_type:f.type,tamanho_bytes:f.size}).select('id,property_id,path,ordem,tipo,principal,nome_arquivo').single();
    if(r.error){await db.storage.from(BUCKET).remove([path]);setBusy(false);return setMsg('Falha ao registrar foto: '+r.error.message)}
    novos.push(r.data as Media);
   }
@@ -249,12 +227,9 @@ export default function Imoveis(){
   if(!edit||busy)return;const f=e.target.files?.[0];e.target.value='';if(!f)return;
   if(media.some(x=>x.tipo==='video'))return setMsg('Remova o vídeo atual antes de enviar outro.');
   if(!['video/mp4','video/webm'].includes(f.type)||f.size>50*1024*1024)return setMsg('Vídeo: MP4 ou WebM, máximo 50 MB.');
-  setBusy(true);const ext=f.name.split('.').pop()||'mp4',path=`${edit.id}/video/${crypto.randomUUID()}.${ext}`;
-  const hash=await sha256(f);
-  const duplicate=await db.from('property_images').select('id').eq('property_id',edit.id).eq('sha256',hash).maybeSingle();
-  if(duplicate.data){setBusy(false);return setMsg(`O vídeo \"${f.name}\" já existe neste imóvel.`)}
+  setBusy(true);const ext=f.name.split('.').pop()?.toLowerCase()||'mp4',path=`${edit.id}/video/${crypto.randomUUID()}-nt-alpha-video.${ext}`;
   const u=await db.storage.from(BUCKET).upload(path,f,{contentType:f.type,upsert:false});if(u.error){setBusy(false);return setMsg('Falha no vídeo: '+u.error.message)}
-  const r=await db.from('property_images').insert({property_id:edit.id,path,ordem:1,tipo:'video',principal:false,nome_arquivo:f.name,mime_type:f.type,tamanho_bytes:f.size,sha256:hash}).select('id,property_id,path,ordem,tipo,principal,nome_arquivo').single();
+  const r=await db.from('property_images').insert({property_id:edit.id,path,ordem:1,tipo:'video',principal:false,nome_arquivo:f.name,mime_type:f.type,tamanho_bytes:f.size}).select('id,property_id,path,ordem,tipo,principal,nome_arquivo').single();
   if(r.error){await db.storage.from(BUCKET).remove([path]);setBusy(false);return setMsg('Falha ao registrar vídeo: '+r.error.message)}
   setMedia(v=>[...v,r.data as Media]);setMsg('Vídeo adicionado.');setBusy(false);
  }
@@ -262,15 +237,17 @@ export default function Imoveis(){
  async function excluir(p:P){
   const ativas=publications.filter(x=>x.property_id===p.id&&x.enabled);
   if(ativas.length>0)return setMsg('Este imóvel possui publicação(ões) ativa(s). Desative os canais antes de excluir o imóvel.');
-  if(!confirm(`Excluir ${p.codigo??''} - ${p.titulo}? Esta ação não pode ser desfeita.\n\nTodas as fotos e vídeos vinculados também serão removidos do Storage.`))return;
-  setBusy(true);setMsg('Excluindo imóvel e limpando mídias...');
-  try{
-   const result=await callAdminApi('/api/imoveis/excluir',{propertyId:p.id});
-   setMsg(`Imóvel excluído. ${result.mediaRemoved??0} mídia(s) removida(s) do Storage.`);
-   await load();
-  }catch(error){
-   setMsg(error instanceof Error?error.message:'Não foi possível excluir o imóvel.');
-  }finally{setBusy(false);}
+  if(!confirm(`Excluir ${p.codigo??''} - ${p.titulo}? Esta ação não pode ser desfeita.\n\nO imóvel não possui canais de publicação ativos.`))return;
+  const{data:mediaRows,error:mediaError}=await db.from('property_images').select('path').eq('property_id',p.id);
+  if(mediaError)return setMsg('Não foi possível preparar a exclusão das mídias: '+mediaError.message);
+  const paths=(mediaRows??[]).map((m:any)=>m.path).filter(Boolean);
+  if(paths.length){
+   const storageResult=await db.storage.from(BUCKET).remove(paths);
+   if(storageResult.error)return setMsg('As mídias não puderam ser removidas do Storage. O imóvel não foi excluído: '+storageResult.error.message);
+  }
+  const{error}=await db.from('properties').delete().eq('id',p.id);
+  if(error)return setMsg('Não foi possível excluir. As mídias já foram removidas; o imóvel pode possuir histórico/vínculos. Use status Inativo quando necessário.');
+  setMsg('Imóvel excluído e mídias removidas.');void load();
  }
 
  const list=rows.filter(p=>(!status||p.status===status)&&[
