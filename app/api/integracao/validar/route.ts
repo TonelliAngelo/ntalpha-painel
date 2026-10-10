@@ -5,6 +5,11 @@ import { getCloudflareContext } from '@opennextjs/cloudflare';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+type Env = {
+  NEXT_PUBLIC_SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+};
+
 type Publication = {
   property_id: string | number;
   channel: string;
@@ -21,49 +26,29 @@ type PropertyImage = {
 
 export async function GET() {
   /*
-   * Supabase - PRODUÇÃO
-   *
-   * As chaves NÃO ficam neste arquivo.
-   *
-   * Configure no Cloudflare Workers & Pages > Settings >
-   * Variables and secrets:
-   *
-   * NEXT_PUBLIC_SUPABASE_URL
-   * SUPABASE_SERVICE_ROLE_KEY
-   *
-   * A Publishable Key não é necessária neste endpoint de servidor.
-   *
-   * O código tenta primeiro os bindings do Cloudflare e depois
-   * process.env, mantendo compatibilidade com o runtime do OpenNext.
+   * Cloudflare / OpenNext:
+   * As variáveis de produção são lidas do binding env do Worker.
+   * Não coloque chaves diretamente neste arquivo.
    */
-
-  let cloudflareEnv: Record<string, unknown> = {};
+  let env: Env = {};
 
   try {
-    const context = getCloudflareContext();
-    cloudflareEnv = (context?.env ?? {}) as Record<string, unknown>;
+    const context = await getCloudflareContext({ async: true });
+    env = (context?.env ?? {}) as Env;
   } catch {
-    // Em ambientes fora do runtime Cloudflare, usamos process.env.
+    // Fallback para execução local/ambiente Node.
+    env = {};
   }
 
-  const getEnv = (name: string): string => {
-    const cloudflareValue = cloudflareEnv[name];
+  const url =
+    env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
+    '';
 
-    if (typeof cloudflareValue === 'string' && cloudflareValue.trim()) {
-      return cloudflareValue.trim();
-    }
-
-    const processValue = process.env[name];
-
-    if (typeof processValue === 'string' && processValue.trim()) {
-      return processValue.trim();
-    }
-
-    return '';
-  };
-
-  const url = getEnv('NEXT_PUBLIC_SUPABASE_URL');
-  const key = getEnv('SUPABASE_SERVICE_ROLE_KEY');
+  const key =
+    env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+    '';
 
   if (!url || !key) {
     return NextResponse.json(
