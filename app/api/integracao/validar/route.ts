@@ -1,23 +1,18 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getCloudflareContext } from '@opennextjs/cloudflare';
+import { getServerSupabaseConfig } from '@/lib/server-env';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-type Env = {
-  NEXT_PUBLIC_SUPABASE_URL?: string;
-  SUPABASE_SERVICE_ROLE_KEY?: string;
-};
-
 type Publication = {
-  property_id: string | number;
+  property_id: string;
   channel: string;
   enabled: boolean;
 };
 
 type PropertyImage = {
-  property_id: string | number;
+  property_id: string;
   path: string | null;
   tipo: string | null;
   principal: boolean | null;
@@ -25,54 +20,32 @@ type PropertyImage = {
 };
 
 export async function GET() {
-  /*
-   * Cloudflare / OpenNext:
-   * As variáveis de produção são lidas do binding env do Worker.
-   * Não coloque chaves diretamente neste arquivo.
-   */
-  let env: Env = {};
+  const config = await getServerSupabaseConfig();
 
-  try {
-    const context = await getCloudflareContext({ async: true });
-    env = (context?.env ?? {}) as Env;
-  } catch {
-    // Fallback para execução local/ambiente Node.
-    env = {};
-  }
-
-  const url =
-    env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
-    process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
-    '';
-
-  const key =
-    env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
-    '';
-
-  if (!url || !key) {
+  if (!config.url || !config.secretKey) {
     return NextResponse.json(
       {
         ok: false,
         error: 'Supabase de servidor não configurado.',
         required: [
-          'NEXT_PUBLIC_SUPABASE_URL',
-          'SUPABASE_SERVICE_ROLE_KEY'
+          'NEXT_PUBLIC_SUPABASE_URL (ou SUPABASE_URL)',
+          'SUPABASE_SECRET_KEY (ou SUPABASE_SERVICE_ROLE_KEY legado)',
         ],
         found: {
-          NEXT_PUBLIC_SUPABASE_URL: Boolean(url),
-          SUPABASE_SERVICE_ROLE_KEY: Boolean(key)
-        }
+          NEXT_PUBLIC_SUPABASE_URL: Boolean(config.url),
+          SUPABASE_SERVER_KEY: Boolean(config.secretKey),
+        },
       },
       { status: 500 }
     );
   }
 
-  const db = createClient(url, key, {
+  const db = createClient(config.url, config.secretKey, {
     auth: {
       autoRefreshToken: false,
-      persistSession: false
-    }
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
   });
 
   const { data: pubs, error: pe } = await db
@@ -82,17 +55,19 @@ export async function GET() {
 
   if (pe) {
     return NextResponse.json(
-      { ok: false, error: pe.message },
+      { ok: false, etapa: 'property_publications', error: pe.message },
       { status: 500 }
     );
   }
 
+  const enabledPubs = (pubs ?? []) as Publication[];
   const ids = [
     ...new Set(
-      ((pubs ?? []) as Publication[])
+      enabledPubs
         .filter((p) => p.enabled)
         .map((p) => p.property_id)
-    )
+        .filter(Boolean)
+    ),
   ];
 
   if (!ids.length) {
@@ -102,7 +77,11 @@ export async function GET() {
       validos: 0,
       invalidos: 0,
       pendencias: [],
-      feed: '/api/integracao/vrsync'
+      feeds: {
+        olx: '/api/integracao/olx',
+        zap: '/api/integracao/vrsync?channel=zap',
+        vivareal: '/api/integracao/vrsync?channel=vivareal',
+      },
     });
   }
 
@@ -115,7 +94,7 @@ export async function GET() {
 
   if (xe) {
     return NextResponse.json(
-      { ok: false, error: xe.message },
+      { ok: false, etapa: 'properties', error: xe.message },
       { status: 500 }
     );
   }
@@ -128,16 +107,15 @@ export async function GET() {
 
   if (ie) {
     return NextResponse.json(
-      { ok: false, error: ie.message },
+      { ok: false, etapa: 'property_images', error: ie.message },
       { status: 500 }
     );
   }
 
-  const publicationsByProperty = new Map<string | number, string[]>();
+  const publicationsByProperty = new Map<string, string[]>();
 
-  for (const pub of (pubs ?? []) as Publication[]) {
+  for (const pub of enabledPubs) {
     if (!pub.enabled) continue;
-
     const current = publicationsByProperty.get(pub.property_id) ?? [];
     current.push(pub.channel);
     publicationsByProperty.set(pub.property_id, current);
@@ -160,21 +138,13 @@ export async function GET() {
       issues.push('código do imóvel ausente');
     }
 
-    if (!p.titulo || p.titulo.length < 10 || p.titulo.length > 100) {
+    if (!p.titulo || p.titulo.trim().length < 10 || p.titulo.trim().length > 100) {
       issues.push('título deve ter entre 10 e 100 caracteres');
     }
 
-    if (!p.cep) {
-      issues.push('CEP ausente');
-    }
-
-    if (!p.cidade) {
-      issues.push('cidade ausente');
-    }
-
-    if (!p.bairro) {
-      issues.push('bairro ausente');
-    }
+    if (!p.cep) issues.push('CEP ausente');
+    if (!p.cidade) issues.push('cidade ausente');
+    if (!p.bairro) issues.push('bairro ausente');
 
     if (
       !p.descricao ||
@@ -212,7 +182,7 @@ export async function GET() {
       property_id: p.id,
       canais: publicationsByProperty.get(p.id) ?? [],
       valid: issues.length === 0,
-      issues
+      issues,
     };
   });
 
@@ -224,6 +194,10 @@ export async function GET() {
     validos,
     invalidos: pendencias.length - validos,
     pendencias,
-    feed: '/api/integracao/vrsync'
+    feeds: {
+      olx: '/api/integracao/olx',
+      zap: '/api/integracao/vrsync?channel=zap',
+      vivareal: '/api/integracao/vrsync?channel=vivareal',
+    },
   });
 }
