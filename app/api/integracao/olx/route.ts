@@ -25,6 +25,8 @@ function normalize(value: string | null) {
 }
 
 function int(value: unknown) {
+  if (value === null || value === undefined || value === '') return null;
+
   const n = Number(value);
   return Number.isFinite(n) ? Math.trunc(n) : null;
 }
@@ -143,7 +145,10 @@ export async function GET() {
   const xmlProperties = (properties ?? []).map((p) => {
     const propertyImages = (images ?? [])
       .filter((i) => i.property_id === p.id && /\.(jpe?g)$/i.test(i.path ?? ''))
-      .sort((a, b) => Number(a.ordem ?? 0) - Number(b.ordem ?? 0));
+      .sort((a, b) => Number(a.ordem ?? 0) - Number(b.ordem ?? 0))
+      .filter((image, index, list) =>
+        index === list.findIndex((x) => x.path === image.path)
+      );
 
     const title = cappedTitle(p.titulo, `${subtype(p.tipo)} em ${p.cidade ?? 'São Paulo'}`);
     const desc = description(p.descricao);
@@ -167,14 +172,21 @@ export async function GET() {
       !type.includes('chacara') && !type.includes('fazenda') &&
       !type.includes('sitio');
 
-    const bedrooms = int(p.dormitorios);
-    const bathrooms = int(p.banheiros);
-    const garage = int(p.vagas);
-    const sale = int(p.valor);
+    // ============================================================
+    // DADOS COLETADOS DO SUPABASE -> XML OLX
+    // Não informar valores fixos aqui.
+    // Os valores abaixo vêm diretamente de public.properties.
+    // ============================================================
+    const bedrooms = int(p.dormitorios);   // dormitorios
+    const bathrooms = int(p.banheiros);    // banheiros
+    const garage = int(p.vagas);           // vagas
+    const sale = int(p.valor);              // valor
+
     const condo = int(p.valor_condominio);
     const iptu = int(p.valor_iptu);
-    const totalArea = int(p.area_total);
-    const usefulArea = int(p.area_util);
+    const totalArea = int(p.area_total);   // NULL permanece NULL
+    const usefulArea = int(p.area_util);    // usado somente se area_total não existir
+
 
     const specific = [
       (isApartment || isHouse) && bedrooms !== null ? `<QtdDormitorios>${Math.max(0, Math.min(5, bedrooms))}</QtdDormitorios>` : '',
