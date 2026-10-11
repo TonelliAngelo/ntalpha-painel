@@ -75,9 +75,6 @@ export default function Dashboard(){
   const publicados=properties.filter(p=>p.publicar_site===true && p.status==='disponivel').length;
   const destaques=properties.filter(p=>p.destaque===true && p.publicar_site===true && p.status==='disponivel').length;
   const indisponiveis=properties.filter(p=>p.status!=='disponivel').length;
-  const valorCarteira=properties
-    .filter(p=>p.status==='disponivel')
-    .reduce((s,p)=>s+(Number(p.valor)||0),0);
 
   const cards=[
     ['Imóveis cadastrados',total,'/imoveis'],
@@ -117,17 +114,6 @@ export default function Dashboard(){
             <small>Abrir módulo →</small>
           </a>
         )}
-      </section>
-
-      <section className="panel" style={{marginTop:20}}>
-        <span className="eyebrow">CARTEIRA ATUAL</span>
-        <h2 style={{marginBottom:6}}>Valor dos imóveis disponíveis</h2>
-        <div style={{fontSize:'32px',fontWeight:800,color:'#075b47',marginBottom:8}}>
-          {loading?'—':dinheiro(valorCarteira)}
-        </div>
-        <p className="page-intro" style={{margin:0}}>
-          Soma dos valores cadastrados dos imóveis com status disponível.
-        </p>
       </section>
 
       <section className="panel" style={{marginTop:20}}>
