@@ -199,9 +199,18 @@ export default function Imoveis(){
   if(!edit)return;
   setBusy(true);setMsg('');
   try{
+   const {data:{session}}=await db.auth.getSession();
+   const accessToken=session?.access_token;
+   if(!accessToken){
+    setBusy(false);
+    return setMsg('Sessão expirada. Entre novamente no painel para remover a mídia.');
+   }
    const response=await fetch('/api/imoveis/media',{
     method:'POST',
-    headers:{'Content-Type':'application/json'},
+    headers:{
+     'Content-Type':'application/json',
+     Authorization:'Bearer '+accessToken
+    },
     credentials:'include',
     body:JSON.stringify({mediaId:x.id})
    });
@@ -217,7 +226,6 @@ export default function Imoveis(){
    setBusy(false);
   }
  }
-
  async function fotosNovas(e:ChangeEvent<HTMLInputElement>){
   if(!edit||busy)return;const fs=Array.from(e.target.files??[]);e.target.value='';if(!fs.length)return;
   const atuais=media.filter(x=>x.tipo==='foto');
