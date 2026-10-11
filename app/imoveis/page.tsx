@@ -195,16 +195,27 @@ export default function Imoveis(){
  }
 
  async function remover(x:Media){
-  if(!confirm(`Excluir ${x.tipo==='video'?'o vídeo':'esta foto'}?`))return;
-  setBusy(true);
-  const s=await db.storage.from(BUCKET).remove([x.path]);
-  if(s.error){setBusy(false);return setMsg('Erro no Storage: '+s.error.message)}
-  const r=await db.from('property_images').delete().eq('id',x.id);
-  if(r.error){
+  if(!confirm(`Excluir ${x.tipo==='video'?'o vídeo':'esta foto'}?\n\nO arquivo será removido do cadastro e do Storage.`))return;
+  if(!edit)return;
+  setBusy(true);setMsg('');
+  try{
+   const response=await fetch('/api/imoveis/media',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    credentials:'include',
+    body:JSON.stringify({mediaId:x.id})
+   });
+   const data=await response.json().catch(()=>({}));
+   if(!response.ok){
+    return setMsg(data?.error??'Não foi possível remover a mídia.');
+   }
+   setMedia(v=>v.filter(m=>m.id!==x.id));
+   setMsg(x.tipo==='video'?'Vídeo removido definitivamente.':'Foto removida definitivamente.');
+  }catch(error){
+   setMsg(error instanceof Error?error.message:'Erro de comunicação ao remover a mídia.');
+  }finally{
    setBusy(false);
-   return setMsg('O arquivo físico foi removido, mas o registro não pôde ser excluído: '+r.error.message);
   }
-  setMedia(v=>v.filter(m=>m.id!==x.id));setMsg(x.tipo==='video'?'Vídeo removido.':'Foto removida.');setBusy(false);
  }
 
  async function fotosNovas(e:ChangeEvent<HTMLInputElement>){
@@ -214,7 +225,7 @@ export default function Imoveis(){
   if(fs.some(f=>!['image/jpeg','image/png','image/webp'].includes(f.type)||f.size>5*1024*1024))return setMsg('Fotos: JPEG, PNG ou WebP, máximo 5 MB cada.');
   setBusy(true);const novos:Media[]=[];
   for(let i=0;i<fs.length;i++){
-   const f=fs[i],ext=f.name.split('.').pop()?.toLowerCase()||'jpg',ordem=atuais.length+i+1,path=`${edit.id}/fotos/${String(ordem).padStart(2,'0')}-${crypto.randomUUID()}-nt-alpha-foto.${ext}`;
+   const f=fs[i],ext=f.name.split('.').pop()||'jpg',ordem=atuais.length+i+1,path=`${edit.id}/fotos/${String(ordem).padStart(2,'0')}-${crypto.randomUUID()}.${ext}`;
    const u=await db.storage.from(BUCKET).upload(path,f,{contentType:f.type,upsert:false});if(u.error){setBusy(false);return setMsg('Falha no upload: '+u.error.message)}
    const r=await db.from('property_images').insert({property_id:edit.id,path,ordem,tipo:'foto',principal:false,nome_arquivo:f.name,mime_type:f.type,tamanho_bytes:f.size}).select('id,property_id,path,ordem,tipo,principal,nome_arquivo').single();
    if(r.error){await db.storage.from(BUCKET).remove([path]);setBusy(false);return setMsg('Falha ao registrar foto: '+r.error.message)}
@@ -227,7 +238,7 @@ export default function Imoveis(){
   if(!edit||busy)return;const f=e.target.files?.[0];e.target.value='';if(!f)return;
   if(media.some(x=>x.tipo==='video'))return setMsg('Remova o vídeo atual antes de enviar outro.');
   if(!['video/mp4','video/webm'].includes(f.type)||f.size>50*1024*1024)return setMsg('Vídeo: MP4 ou WebM, máximo 50 MB.');
-  setBusy(true);const ext=f.name.split('.').pop()?.toLowerCase()||'mp4',path=`${edit.id}/video/${crypto.randomUUID()}-nt-alpha-video.${ext}`;
+  setBusy(true);const ext=f.name.split('.').pop()||'mp4',path=`${edit.id}/video/${crypto.randomUUID()}.${ext}`;
   const u=await db.storage.from(BUCKET).upload(path,f,{contentType:f.type,upsert:false});if(u.error){setBusy(false);return setMsg('Falha no vídeo: '+u.error.message)}
   const r=await db.from('property_images').insert({property_id:edit.id,path,ordem:1,tipo:'video',principal:false,nome_arquivo:f.name,mime_type:f.type,tamanho_bytes:f.size}).select('id,property_id,path,ordem,tipo,principal,nome_arquivo').single();
   if(r.error){await db.storage.from(BUCKET).remove([path]);setBusy(false);return setMsg('Falha ao registrar vídeo: '+r.error.message)}
@@ -238,16 +249,9 @@ export default function Imoveis(){
   const ativas=publications.filter(x=>x.property_id===p.id&&x.enabled);
   if(ativas.length>0)return setMsg('Este imóvel possui publicação(ões) ativa(s). Desative os canais antes de excluir o imóvel.');
   if(!confirm(`Excluir ${p.codigo??''} - ${p.titulo}? Esta ação não pode ser desfeita.\n\nO imóvel não possui canais de publicação ativos.`))return;
-  const{data:mediaRows,error:mediaError}=await db.from('property_images').select('path').eq('property_id',p.id);
-  if(mediaError)return setMsg('Não foi possível preparar a exclusão das mídias: '+mediaError.message);
-  const paths=(mediaRows??[]).map((m:any)=>m.path).filter(Boolean);
-  if(paths.length){
-   const storageResult=await db.storage.from(BUCKET).remove(paths);
-   if(storageResult.error)return setMsg('As mídias não puderam ser removidas do Storage. O imóvel não foi excluído: '+storageResult.error.message);
-  }
   const{error}=await db.from('properties').delete().eq('id',p.id);
-  if(error)return setMsg('Não foi possível excluir. As mídias já foram removidas; o imóvel pode possuir histórico/vínculos. Use status Inativo quando necessário.');
-  setMsg('Imóvel excluído e mídias removidas.');void load();
+  if(error)return setMsg('Não foi possível excluir. O imóvel pode possuir histórico/vínculos. Use status Inativo quando necessário.');
+  setMsg('Imóvel excluído.');void load();
  }
 
  const list=rows.filter(p=>(!status||p.status===status)&&[
@@ -361,7 +365,7 @@ export default function Imoveis(){
        </select>
       </label>
       <label>CEP<input value={edit.cep??''} onChange={e=>setEdit({...edit,cep:e.target.value})} placeholder="00000-000"/></label>
-      <label>Estado / UF<select value={edit.estado??''} onChange={e=>setEdit({...edit,estado:e.target.value})}><option value="">Selecione...</option><option value="SP">SP</option><option value="RJ">RJ</option><option value="MG">MG</option><option value="PR">PR</option><option value="SC">SC</option><option value="RS">RS</option><option value="ES">ES</option><option value="BA">BA</option><option value="GO">GO</option><option value="DF">DF</option><option value="PE">PE</option><option value="CE">CE</option></select></label>
+      <label>Estado / UF<select value={edit.estado??'SP'} onChange={e=>setEdit({...edit,estado:e.target.value})}><option value="">Selecione...</option><option value="SP">SP</option><option value="RJ">RJ</option><option value="MG">MG</option><option value="PR">PR</option><option value="SC">SC</option><option value="RS">RS</option><option value="ES">ES</option><option value="BA">BA</option><option value="GO">GO</option><option value="DF">DF</option><option value="PE">PE</option><option value="CE">CE</option></select></label>
       <label>Cidade<input value={edit.cidade??''} onChange={e=>setEdit({...edit,cidade:e.target.value})}/></label>
       <label>Bairro / Região<input value={edit.bairro??''} onChange={e=>setEdit({...edit,bairro:e.target.value})}/></label>
       <label>Endereço do imóvel<input value={edit.endereco??''} onChange={e=>setEdit({...edit,endereco:e.target.value})}/></label>
