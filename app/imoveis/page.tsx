@@ -199,25 +199,47 @@ export default function Imoveis(){
   if(!edit)return;
   setBusy(true);setMsg('');
   try{
-   const {data:{session}}=await db.auth.getSession();
-   const accessToken=session?.access_token;
-   if(!accessToken){
+   let {data:{session}}=await db.auth.getSession();
+
+   // Se a sessão ainda não estiver disponível no cache do cliente,
+   // tenta renová-la usando o refresh token persistido pelo Supabase.
+   if(!session?.access_token){
+    const refreshed=await db.auth.refreshSession();
+    session=refreshed.data.session;
+    if(refreshed.error) console.warn('Falha ao renovar sessão para exclusão de mídia:',refreshed.error);
+   }
+
+   if(!session?.access_token){
     setBusy(false);
     return setMsg('Sessão expirada. Entre novamente no painel para remover a mídia.');
    }
-   const response=await fetch('/api/imoveis/media',{
-    method:'POST',
-    headers:{
-     'Content-Type':'application/json',
-     Authorization:'Bearer '+accessToken
-    },
-    credentials:'include',
-    body:JSON.stringify({mediaId:x.id})
-   });
+
+   const executarExclusao=async(token:string)=>{
+    return fetch('/api/imoveis/media',{
+     method:'POST',
+     headers:{
+      'Content-Type':'application/json',
+      Authorization:'Bearer '+token
+     },
+     credentials:'include',
+     body:JSON.stringify({mediaId:x.id})
+    });
+   };
+
+   let response=await executarExclusao(session.access_token);
+
+   // Token expirado/recusado: renova uma vez e repete a operação.
+   if(response.status===401){
+    const refreshed=await db.auth.refreshSession();
+    const renewedToken=refreshed.data.session?.access_token;
+    if(renewedToken) response=await executarExclusao(renewedToken);
+   }
+
    const data=await response.json().catch(()=>({}));
    if(!response.ok){
     return setMsg(data?.error??'Não foi possível remover a mídia.');
    }
+
    setMedia(v=>v.filter(m=>m.id!==x.id));
    setMsg(x.tipo==='video'?'Vídeo removido definitivamente.':'Foto removida definitivamente.');
   }catch(error){
