@@ -1,6 +1,12 @@
 'use client';
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
+import {
+  ChangeEvent,
+  FormEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
@@ -19,6 +25,10 @@ type ClientItem = {
 type CondominiumItem = {
   id: string;
   nome: string;
+  cep: string | null;
+  cidade: string | null;
+  bairro: string | null;
+  endereco: string | null;
 };
 
 const PROPERTY_TYPES = [
@@ -65,21 +75,22 @@ const MAX_PHOTOS = 10;
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
 const MAX_VIDEO_SIZE = 50 * 1024 * 1024;
 
-const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const VIDEO_TYPES = ['video/mp4', 'video/webm'];
+const PHOTO_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+];
 
-function safeFileName(name: string) {
-  const dot = name.lastIndexOf('.');
-  const ext = dot >= 0 ? name.slice(dot).toLowerCase() : '';
-  const base = (dot >= 0 ? name.slice(0, dot) : name)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9_-]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .toLowerCase();
+const VIDEO_TYPES = [
+  'video/mp4',
+  'video/webm',
+];
 
-  return `${base || 'arquivo'}${ext}`;
+function formatCep(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  return digits.length > 5
+    ? `${digits.slice(0, 5)}-${digits.slice(5)}`
+    : digits;
 }
 
 export default function PropertyForm() {
@@ -89,6 +100,7 @@ export default function PropertyForm() {
   const [f, setF] = useState({
     titulo: '',
     tipo: 'Casa',
+    cep: '',
     cidade: 'Barueri',
     bairro: 'Alphaville',
     endereco: '',
@@ -115,7 +127,9 @@ export default function PropertyForm() {
   });
 
   const [clients, setClients] = useState<ClientItem[]>([]);
-  const [condominiums, setCondominiums] = useState<CondominiumItem[]>([]);
+  const [condominiums, setCondominiums] = useState<
+    CondominiumItem[]
+  >([]);
   const [ownerId, setOwnerId] = useState('');
   const [condominiumId, setCondominiumId] = useState('');
   const [features, setFeatures] = useState<string[]>([]);
@@ -133,6 +147,7 @@ export default function PropertyForm() {
   const [condominiumOpen, setCondominiumOpen] = useState(false);
   const [condominiumForm, setCondominiumForm] = useState({
     nome: '',
+    cep: '',
     cidade: 'Barueri',
     bairro: '',
     endereco: '',
@@ -145,28 +160,33 @@ export default function PropertyForm() {
   const [videoPreview, setVideoPreview] = useState('');
   const [msg, setMsg] = useState('');
   const [saving, setSaving] = useState(false);
+  const [cepLoading, setCepLoading] = useState(false);
 
   async function loadReferences() {
-    const [clientsResult, condominiumsResult] = await Promise.all([
-      db
-        .from('clients')
-        .select('id,nome,telefone')
-        .eq('ativo', true)
-        .order('nome'),
-      db
-        .from('condominiums')
-        .select('id,nome')
-        .eq('ativo', true)
-        .order('nome'),
-    ]);
+    const [clientsResult, condominiumsResult] =
+      await Promise.all([
+        db
+          .from('clients')
+          .select('id,nome,telefone')
+          .eq('ativo', true)
+          .order('nome'),
+        db
+          .from('condominiums')
+          .select('id,nome,cep,cidade,bairro,endereco')
+          .eq('ativo', true)
+          .order('nome'),
+      ]);
 
     if (!clientsResult.error) {
-      setClients((clientsResult.data ?? []) as ClientItem[]);
+      setClients(
+        (clientsResult.data ?? []) as ClientItem[]
+      );
     }
 
     if (!condominiumsResult.error) {
       setCondominiums(
-        (condominiumsResult.data ?? []) as CondominiumItem[]
+        (condominiumsResult.data ??
+          []) as CondominiumItem[]
       );
     }
   }
@@ -174,6 +194,95 @@ export default function PropertyForm() {
   useEffect(() => {
     void loadReferences();
   }, []);
+
+  async function consultarCep(
+    cepValue: string,
+    target: 'imovel' | 'condominio'
+  ) {
+    const digits = cepValue.replace(/\D/g, '');
+
+    if (digits.length !== 8) {
+      setMsg('Informe um CEP válido com 8 dígitos.');
+      return;
+    }
+
+    setCepLoading(true);
+    setMsg('Consultando CEP...');
+
+    try {
+      const response = await fetch(
+        `https://viacep.com.br/ws/${digits}/json/`
+      );
+
+      if (!response.ok) {
+        throw new Error('Falha ao consultar o CEP.');
+      }
+
+      const data = await response.json();
+
+      if (data.erro) {
+        setMsg('CEP não encontrado.');
+        return;
+      }
+
+      if (target === 'imovel') {
+        setF((current) => ({
+          ...current,
+          cep: formatCep(data.cep ?? cepValue),
+          cidade: data.localidade ?? current.cidade,
+          bairro: data.bairro ?? current.bairro,
+          endereco: data.logradouro ?? current.endereco,
+        }));
+      } else {
+        setCondominiumForm((current) => ({
+          ...current,
+          cep: formatCep(data.cep ?? cepValue),
+          cidade: data.localidade ?? current.cidade,
+          bairro: data.bairro ?? current.bairro,
+          endereco: data.logradouro ?? current.endereco,
+        }));
+      }
+
+      setMsg(
+        'Endereço preenchido automaticamente. Confira os dados antes de salvar.'
+      );
+    } catch (error) {
+      setMsg(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível consultar o CEP.'
+      );
+    } finally {
+      setCepLoading(false);
+    }
+  }
+
+  function selecionarCondominio(id: string) {
+    setCondominiumId(id);
+
+    const condominium = condominiums.find(
+      (item) => item.id === id
+    );
+
+    if (!condominium) return;
+
+    setF((current) => ({
+      ...current,
+      cep: condominium.cep
+        ? formatCep(condominium.cep)
+        : current.cep,
+      cidade: condominium.cidade ?? current.cidade,
+      bairro: condominium.bairro ?? current.bairro,
+      endereco:
+        condominium.endereco ?? current.endereco,
+    }));
+
+    setMsg(
+      condominium.cep
+        ? 'Endereço preenchido a partir do cadastro do condomínio.'
+        : 'Condomínio selecionado. Informe o CEP para completar o endereço automaticamente.'
+    );
+  }
 
   async function createOwner() {
     const nome = ownerForm.nome.trim();
@@ -186,14 +295,17 @@ export default function PropertyForm() {
     const cpf = ownerForm.cpf.replace(/\D/g, '');
 
     if (cpf) {
-      const { data: existing, error: findError } = await db
-        .from('clients')
-        .select('id,nome')
-        .eq('cpf', cpf)
-        .maybeSingle();
+      const { data: existing, error: findError } =
+        await db
+          .from('clients')
+          .select('id,nome')
+          .eq('cpf', cpf)
+          .maybeSingle();
 
       if (findError) {
-        setMsg(`Não foi possível validar o CPF: ${findError.message}`);
+        setMsg(
+          `Não foi possível validar o CPF: ${findError.message}`
+        );
         return;
       }
 
@@ -212,7 +324,8 @@ export default function PropertyForm() {
         telefone: ownerForm.telefone.trim() || null,
         email: ownerForm.email.trim() || null,
         cpf: cpf || null,
-        observacoes: ownerForm.observacoes.trim() || null,
+        observacoes:
+          ownerForm.observacoes.trim() || null,
         origem: 'PAINEL',
         ativo: true,
         aceita_novidades: ownerForm.aceita_novidades,
@@ -251,11 +364,12 @@ export default function PropertyForm() {
       return;
     }
 
-    const { data: existing, error: findError } = await db
-      .from('condominiums')
-      .select('id,nome')
-      .ilike('nome', nome)
-      .limit(1);
+    const { data: existing, error: findError } =
+      await db
+        .from('condominiums')
+        .select('id,nome')
+        .ilike('nome', nome)
+        .limit(1);
 
     if (findError) {
       setMsg(
@@ -275,10 +389,14 @@ export default function PropertyForm() {
       .from('condominiums')
       .insert({
         nome,
+        cep:
+          condominiumForm.cep.replace(/\D/g, '') || null,
         cidade: condominiumForm.cidade.trim() || null,
         bairro: condominiumForm.bairro.trim() || null,
-        endereco: condominiumForm.endereco.trim() || null,
-        observacoes: condominiumForm.observacoes.trim() || null,
+        endereco:
+          condominiumForm.endereco.trim() || null,
+        observacoes:
+          condominiumForm.observacoes.trim() || null,
         ativo: true,
       })
       .select('id,nome')
@@ -298,6 +416,7 @@ export default function PropertyForm() {
     setCondominiumOpen(false);
     setCondominiumForm({
       nome: '',
+      cep: '',
       cidade: 'Barueri',
       bairro: '',
       endereco: '',
@@ -314,7 +433,9 @@ export default function PropertyForm() {
     );
   }
 
-  function selectPhotos(e: ChangeEvent<HTMLInputElement>) {
+  function selectPhotos(
+    e: ChangeEvent<HTMLInputElement>
+  ) {
     const selected = Array.from(e.target.files ?? []);
     e.target.value = '';
 
@@ -347,7 +468,9 @@ export default function PropertyForm() {
       return;
     }
 
-    const tooLarge = selected.find((file) => file.size > MAX_PHOTO_SIZE);
+    const tooLarge = selected.find(
+      (file) => file.size > MAX_PHOTO_SIZE
+    );
 
     if (tooLarge) {
       setMsg(
@@ -368,7 +491,9 @@ export default function PropertyForm() {
 
   function removePhoto(id: string) {
     setPhotos((current) => {
-      const found = current.find((photo) => photo.id === id);
+      const found = current.find(
+        (photo) => photo.id === id
+      );
 
       if (found) {
         URL.revokeObjectURL(found.preview);
@@ -389,7 +514,9 @@ export default function PropertyForm() {
     setMsg('');
   }
 
-  function selectVideo(e: ChangeEvent<HTMLInputElement>) {
+  function selectVideo(
+    e: ChangeEvent<HTMLInputElement>
+  ) {
     const file = e.target.files?.[0] ?? null;
     e.target.value = '';
 
@@ -427,7 +554,9 @@ export default function PropertyForm() {
   async function cleanupStorage(paths: string[]) {
     if (!paths.length) return;
 
-    await db.storage.from('property-images').remove(paths);
+    await db.storage
+      .from('property-images')
+      .remove(paths);
   }
 
   async function salvar(e: FormEvent) {
@@ -436,7 +565,9 @@ export default function PropertyForm() {
     if (saving) return;
 
     if (!ownerId) {
-      setMsg('Selecione ou cadastre o proprietário do imóvel.');
+      setMsg(
+        'Selecione ou cadastre o proprietário do imóvel.'
+      );
       return;
     }
 
@@ -477,50 +608,66 @@ export default function PropertyForm() {
         );
       }
 
-      const { data: property, error: propertyError } = await db
-        .from('properties')
-        .insert({
-          titulo: f.titulo.trim(),
-          tipo: f.tipo,
-          cidade: f.cidade.trim() || null,
-          bairro: f.bairro.trim() || null,
-          endereco: f.endereco.trim() || null,
-          bloco_torre: f.bloco_torre.trim() || null,
-          unidade: f.unidade.trim() || null,
-          complemento: f.complemento.trim() || null,
-          andar: f.andar ? Number(f.andar) : null,
-          condominium_id: condominiumId || null,
-          valor: f.valor ? Number(f.valor) : null,
-          valor_condominio: f.valor_condominio
-            ? Number(f.valor_condominio)
-            : null,
-          valor_iptu: f.valor_iptu ? Number(f.valor_iptu) : null,
-          area_util: f.area_util ? Number(f.area_util) : null,
-          area_total: f.area_total ? Number(f.area_total) : null,
-          dormitorios: Number(f.dormitorios) || 0,
-          suites: Number(f.suites) || 0,
-          banheiros: Number(f.banheiros) || 0,
-          vagas: Number(f.vagas) || 0,
-          ano_construcao: f.ano_construcao
-            ? Number(f.ano_construcao)
-            : null,
-          mobiliado: f.mobiliado || null,
-          caracteristicas: features,
-          outras_caracteristicas:
-            f.outras_caracteristicas.trim() || null,
-          status: f.status,
-          descricao: f.descricao.trim() || null,
-          destaque: f.destaque,
-          publicar_site: f.publicar_site,
-          created_by: user.id,
-          updated_by: user.id,
-        })
-        .select('id')
-        .single();
+      const { data: property, error: propertyError } =
+        await db
+          .from('properties')
+          .insert({
+            titulo: f.titulo.trim(),
+            tipo: f.tipo,
+            cep: f.cep.replace(/\D/g, '') || null,
+            cidade: f.cidade.trim() || null,
+            bairro: f.bairro.trim() || null,
+            endereco: f.endereco.trim() || null,
+            bloco_torre:
+              f.bloco_torre.trim() || null,
+            unidade: f.unidade.trim() || null,
+            complemento:
+              f.complemento.trim() || null,
+            andar: f.andar ? Number(f.andar) : null,
+            condominium_id:
+              condominiumId || null,
+            valor: f.valor ? Number(f.valor) : null,
+            valor_condominio: f.valor_condominio
+              ? Number(f.valor_condominio)
+              : null,
+            valor_iptu: f.valor_iptu
+              ? Number(f.valor_iptu)
+              : null,
+            area_util: f.area_util
+              ? Number(f.area_util)
+              : null,
+            area_total: f.area_total
+              ? Number(f.area_total)
+              : null,
+            dormitorios:
+              Number(f.dormitorios) || 0,
+            suites: Number(f.suites) || 0,
+            banheiros:
+              Number(f.banheiros) || 0,
+            vagas: Number(f.vagas) || 0,
+            ano_construcao: f.ano_construcao
+              ? Number(f.ano_construcao)
+              : null,
+            mobiliado: f.mobiliado || null,
+            caracteristicas: features,
+            outras_caracteristicas:
+              f.outras_caracteristicas.trim() ||
+              null,
+            status: f.status,
+            descricao:
+              f.descricao.trim() || null,
+            destaque: f.destaque,
+            publicar_site: f.publicar_site,
+            created_by: user.id,
+            updated_by: user.id,
+          })
+          .select('id')
+          .single();
 
       if (propertyError || !property) {
         throw new Error(
-          propertyError?.message || 'Não foi possível criar o imóvel.'
+          propertyError?.message ||
+            'Não foi possível criar o imóvel.'
         );
       }
 
@@ -555,20 +702,29 @@ export default function PropertyForm() {
       for (let i = 0; i < photos.length; i++) {
         const photo = photos[i];
 
-        setMsg(`Enviando foto ${i + 1} de ${photos.length}...`);
+        setMsg(
+          `Enviando foto ${i + 1} de ${photos.length}...`
+        );
 
         const path =
           `${property.id}/fotos/` +
           `${String(i + 1).padStart(2, '0')}-` +
-          `${crypto.randomUUID()}-nt-alpha-foto.${photo.file.name.split('.').pop()?.toLowerCase() || 'jpg'}`;
+          `${crypto.randomUUID()}-nt-alpha-foto.` +
+          `${
+            photo.file.name
+              .split('.')
+              .pop()
+              ?.toLowerCase() || 'jpg'
+          }`;
 
-        const { error: uploadError } = await db.storage
-          .from('property-images')
-          .upload(path, photo.file, {
-            cacheControl: '3600',
-            upsert: false,
-            contentType: photo.file.type,
-          });
+        const { error: uploadError } =
+          await db.storage
+            .from('property-images')
+            .upload(path, photo.file, {
+              cacheControl: '3600',
+              upsert: false,
+              contentType: photo.file.type,
+            });
 
         if (uploadError) {
           throw new Error(
@@ -595,15 +751,20 @@ export default function PropertyForm() {
 
         const path =
           `${property.id}/video/` +
-          `${crypto.randomUUID()}-nt-alpha-video.${video.name.split('.').pop()?.toLowerCase() || 'mp4'}`;
+          `${crypto.randomUUID()}-nt-alpha-video.` +
+          `${
+            video.name.split('.').pop()?.toLowerCase() ||
+            'mp4'
+          }`;
 
-        const { error: videoError } = await db.storage
-          .from('property-images')
-          .upload(path, video, {
-            cacheControl: '3600',
-            upsert: false,
-            contentType: video.type,
-          });
+        const { error: videoError } =
+          await db.storage
+            .from('property-images')
+            .upload(path, video, {
+              cacheControl: '3600',
+              upsert: false,
+              contentType: video.type,
+            });
 
         if (videoError) {
           throw new Error(
@@ -628,9 +789,10 @@ export default function PropertyForm() {
       if (mediaRows.length) {
         setMsg('Registrando fotos e vídeo...');
 
-        const { error: mediaError } = await db
-          .from('property_images')
-          .insert(mediaRows);
+        const { error: mediaError } =
+          await db
+            .from('property_images')
+            .insert(mediaRows);
 
         if (mediaError) {
           throw new Error(
@@ -639,7 +801,9 @@ export default function PropertyForm() {
         }
       }
 
-      photos.forEach((photo) => URL.revokeObjectURL(photo.preview));
+      photos.forEach((photo) =>
+        URL.revokeObjectURL(photo.preview)
+      );
 
       if (videoPreview) {
         URL.revokeObjectURL(videoPreview);
@@ -651,11 +815,6 @@ export default function PropertyForm() {
     } catch (error) {
       await cleanupStorage(uploadedPaths);
 
-      /*
-       * Se o imóvel chegou a ser criado mas alguma mídia falhou,
-       * removemos o cadastro recém-criado para não deixar um imóvel
-       * incompleto ou publicado sem suas mídias.
-       */
       if (propertyId) {
         await db
           .from('property_images')
@@ -687,28 +846,40 @@ export default function PropertyForm() {
     <form className="panel form" onSubmit={salvar}>
       <section className="form-section">
         <h2>1. Proprietário</h2>
+
         <div className="grid">
           <label>
             Proprietário *
             <select
               required
               value={ownerId}
-              onChange={(e) => setOwnerId(e.target.value)}
+              onChange={(e) =>
+                setOwnerId(e.target.value)
+              }
             >
               <option value="">Selecione...</option>
+
               {clients.map((client) => (
-                <option key={client.id} value={client.id}>
+                <option
+                  key={client.id}
+                  value={client.id}
+                >
                   {client.nome}
-                  {client.telefone ? ` · ${client.telefone}` : ''}
+                  {client.telefone
+                    ? ` · ${client.telefone}`
+                    : ''}
                 </option>
               ))}
             </select>
           </label>
+
           <div className="form-inline-action">
             <button
               type="button"
               className="secondary-button"
-              onClick={() => setOwnerOpen((current) => !current)}
+              onClick={() =>
+                setOwnerOpen((current) => !current)
+              }
             >
               + Novo proprietário
             </button>
@@ -718,16 +889,21 @@ export default function PropertyForm() {
         {ownerOpen && (
           <div className="quick-form nested-form">
             <h3>Cadastro rápido de proprietário</h3>
+
             <div className="grid">
               <label>
                 Nome *
                 <input
                   value={ownerForm.nome}
                   onChange={(e) =>
-                    setOwnerForm({ ...ownerForm, nome: e.target.value })
+                    setOwnerForm({
+                      ...ownerForm,
+                      nome: e.target.value,
+                    })
                   }
                 />
               </label>
+
               <label>
                 WhatsApp / Telefone
                 <input
@@ -740,26 +916,35 @@ export default function PropertyForm() {
                   }
                 />
               </label>
+
               <label>
                 E-mail
                 <input
                   type="email"
                   value={ownerForm.email}
                   onChange={(e) =>
-                    setOwnerForm({ ...ownerForm, email: e.target.value })
+                    setOwnerForm({
+                      ...ownerForm,
+                      email: e.target.value,
+                    })
                   }
                 />
               </label>
+
               <label>
                 CPF (opcional)
                 <input
                   value={ownerForm.cpf}
                   onChange={(e) =>
-                    setOwnerForm({ ...ownerForm, cpf: e.target.value })
+                    setOwnerForm({
+                      ...ownerForm,
+                      cpf: e.target.value,
+                    })
                   }
                 />
               </label>
             </div>
+
             <label>
               Observações
               <textarea
@@ -773,27 +958,38 @@ export default function PropertyForm() {
                 }
               />
             </label>
+
             <label>
               <input
                 type="checkbox"
-                checked={ownerForm.aceita_novidades}
+                checked={
+                  ownerForm.aceita_novidades
+                }
                 onChange={(e) =>
                   setOwnerForm({
                     ...ownerForm,
-                    aceita_novidades: e.target.checked,
+                    aceita_novidades:
+                      e.target.checked,
                   })
                 }
               />{' '}
               Aceita receber novidades
             </label>
+
             <div className="actions">
-              <button type="button" onClick={createOwner}>
+              <button
+                type="button"
+                onClick={createOwner}
+              >
                 Cadastrar proprietário
               </button>
+
               <button
                 type="button"
                 className="secondary-button"
-                onClick={() => setOwnerOpen(false)}
+                onClick={() =>
+                  setOwnerOpen(false)
+                }
               >
                 Cancelar
               </button>
@@ -804,27 +1000,41 @@ export default function PropertyForm() {
 
       <section className="form-section">
         <h2>2. Condomínio e localização</h2>
+
         <div className="grid">
           <label>
             Condomínio / Empreendimento
             <select
               value={condominiumId}
-              onChange={(e) => setCondominiumId(e.target.value)}
+              onChange={(e) =>
+                selecionarCondominio(e.target.value)
+              }
             >
-              <option value="">Sem condomínio</option>
-              {condominiums.map((condominium) => (
-                <option key={condominium.id} value={condominium.id}>
-                  {condominium.nome}
-                </option>
-              ))}
+              <option value="">
+                Sem condomínio
+              </option>
+
+              {condominiums.map(
+                (condominium) => (
+                  <option
+                    key={condominium.id}
+                    value={condominium.id}
+                  >
+                    {condominium.nome}
+                  </option>
+                )
+              )}
             </select>
           </label>
+
           <div className="form-inline-action">
             <button
               type="button"
               className="secondary-button"
               onClick={() =>
-                setCondominiumOpen((current) => !current)
+                setCondominiumOpen(
+                  (current) => !current
+                )
               }
             >
               + Novo condomínio
@@ -835,6 +1045,7 @@ export default function PropertyForm() {
         {condominiumOpen && (
           <div className="quick-form nested-form">
             <h3>Cadastro rápido de condomínio</h3>
+
             <div className="grid">
               <label>
                 Nome *
@@ -848,6 +1059,48 @@ export default function PropertyForm() {
                   }
                 />
               </label>
+
+              <label>
+                CEP
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 8,
+                    alignItems: 'flex-end',
+                  }}
+                >
+                  <input
+                    value={condominiumForm.cep}
+                    onChange={(e) =>
+                      setCondominiumForm({
+                        ...condominiumForm,
+                        cep: formatCep(
+                          e.target.value
+                        ),
+                      })
+                    }
+                    placeholder="00000-000"
+                    maxLength={9}
+                  />
+
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={cepLoading}
+                    onClick={() =>
+                      consultarCep(
+                        condominiumForm.cep,
+                        'condominio'
+                      )
+                    }
+                  >
+                    {cepLoading
+                      ? 'Consultando...'
+                      : 'Buscar endereço'}
+                  </button>
+                </div>
+              </label>
+
               <label>
                 Cidade
                 <input
@@ -860,6 +1113,7 @@ export default function PropertyForm() {
                   }
                 />
               </label>
+
               <label>
                 Bairro
                 <input
@@ -872,6 +1126,7 @@ export default function PropertyForm() {
                   }
                 />
               </label>
+
               <label>
                 Endereço
                 <input
@@ -885,6 +1140,7 @@ export default function PropertyForm() {
                 />
               </label>
             </div>
+
             <label>
               Observações
               <textarea
@@ -898,14 +1154,21 @@ export default function PropertyForm() {
                 }
               />
             </label>
+
             <div className="actions">
-              <button type="button" onClick={createCondominium}>
+              <button
+                type="button"
+                onClick={createCondominium}
+              >
                 Cadastrar condomínio
               </button>
+
               <button
                 type="button"
                 className="secondary-button"
-                onClick={() => setCondominiumOpen(false)}
+                onClick={() =>
+                  setCondominiumOpen(false)
+                }
               >
                 Cancelar
               </button>
@@ -915,58 +1178,131 @@ export default function PropertyForm() {
 
         <div className="grid">
           <label>
+            CEP
+            <div
+              style={{
+                display: 'flex',
+                gap: 8,
+                alignItems: 'flex-end',
+              }}
+            >
+              <input
+                value={f.cep}
+                onChange={(e) =>
+                  setF({
+                    ...f,
+                    cep: formatCep(e.target.value),
+                  })
+                }
+                placeholder="00000-000"
+                maxLength={9}
+              />
+
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={cepLoading}
+                onClick={() =>
+                  consultarCep(f.cep, 'imovel')
+                }
+              >
+                {cepLoading
+                  ? 'Consultando...'
+                  : 'Buscar endereço'}
+              </button>
+            </div>
+          </label>
+
+          <label>
             Cidade
             <input
               value={f.cidade}
-              onChange={(e) => setF({ ...f, cidade: e.target.value })}
+              onChange={(e) =>
+                setF({
+                  ...f,
+                  cidade: e.target.value,
+                })
+              }
             />
           </label>
+
           <label>
             Bairro / Região
             <input
               value={f.bairro}
-              onChange={(e) => setF({ ...f, bairro: e.target.value })}
+              onChange={(e) =>
+                setF({
+                  ...f,
+                  bairro: e.target.value,
+                })
+              }
             />
           </label>
+
           <label>
             Endereço do imóvel
             <input
               value={f.endereco}
-              onChange={(e) => setF({ ...f, endereco: e.target.value })}
+              onChange={(e) =>
+                setF({
+                  ...f,
+                  endereco: e.target.value,
+                })
+              }
             />
           </label>
+
           <label>
             Bloco / Torre
             <input
               value={f.bloco_torre}
               onChange={(e) =>
-                setF({ ...f, bloco_torre: e.target.value })
+                setF({
+                  ...f,
+                  bloco_torre: e.target.value,
+                })
               }
             />
           </label>
+
           <label>
             Unidade / Apartamento
             <input
               value={f.unidade}
-              onChange={(e) => setF({ ...f, unidade: e.target.value })}
+              onChange={(e) =>
+                setF({
+                  ...f,
+                  unidade: e.target.value,
+                })
+              }
             />
           </label>
+
           <label>
             Complemento
             <input
               value={f.complemento}
               onChange={(e) =>
-                setF({ ...f, complemento: e.target.value })
+                setF({
+                  ...f,
+                  complemento: e.target.value,
+                })
               }
             />
           </label>
+
           <label>
             Andar
             <input
               type="number"
               min="0"
               value={f.andar}
-              onChange={(e) => setF({ ...f, andar: e.target.value })}
+              onChange={(e) =>
+                setF({
+                  ...f,
+                  andar: e.target.value,
+                })
+              }
             />
           </label>
         </div>
@@ -974,27 +1310,40 @@ export default function PropertyForm() {
 
       <section className="form-section">
         <h2>3. Dados do imóvel</h2>
+
         <div className="grid">
           <label>
             Título *
             <input
               required
               value={f.titulo}
-              onChange={(e) => setF({ ...f, titulo: e.target.value })}
+              onChange={(e) =>
+                setF({
+                  ...f,
+                  titulo: e.target.value,
+                })
+              }
               placeholder="Ex.: Apartamento de alto padrão em Alphaville"
             />
           </label>
+
           <label>
             Tipo
             <select
               value={f.tipo}
-              onChange={(e) => setF({ ...f, tipo: e.target.value })}
+              onChange={(e) =>
+                setF({
+                  ...f,
+                  tipo: e.target.value,
+                })
+              }
             >
               {PROPERTY_TYPES.map((type) => (
                 <option key={type}>{type}</option>
               ))}
             </select>
           </label>
+
           {[
             ['Dormitórios', 'dormitorios'],
             ['Suítes', 'suites'],
@@ -1010,28 +1359,42 @@ export default function PropertyForm() {
                 type="number"
                 min="0"
                 step={
-                  key === 'area_util' || key === 'area_total'
+                  key === 'area_util' ||
+                  key === 'area_total'
                     ? '0.01'
                     : '1'
                 }
-                value={String(f[key as keyof typeof f])}
+                value={String(
+                  f[key as keyof typeof f]
+                )}
                 onChange={(e) =>
-                  setF({ ...f, [key]: e.target.value })
+                  setF({
+                    ...f,
+                    [key]: e.target.value,
+                  })
                 }
               />
             </label>
           ))}
+
           <label>
             Mobiliado
             <select
               value={f.mobiliado}
               onChange={(e) =>
-                setF({ ...f, mobiliado: e.target.value })
+                setF({
+                  ...f,
+                  mobiliado: e.target.value,
+                })
               }
             >
-              <option value="">Não informado</option>
+              <option value="">
+                Não informado
+              </option>
               <option value="nao">Não</option>
-              <option value="parcial">Parcialmente</option>
+              <option value="parcial">
+                Parcialmente
+              </option>
               <option value="sim">Sim</option>
             </select>
           </label>
@@ -1040,6 +1403,7 @@ export default function PropertyForm() {
 
       <section className="form-section">
         <h2>4. Valores</h2>
+
         <div className="grid">
           {[
             ['Valor de venda (R$)', 'valor'],
@@ -1052,9 +1416,14 @@ export default function PropertyForm() {
                 type="number"
                 min="0"
                 step="0.01"
-                value={String(f[key as keyof typeof f])}
+                value={String(
+                  f[key as keyof typeof f]
+                )}
                 onChange={(e) =>
-                  setF({ ...f, [key]: e.target.value })
+                  setF({
+                    ...f,
+                    [key]: e.target.value,
+                  })
                 }
               />
             </label>
@@ -1064,18 +1433,22 @@ export default function PropertyForm() {
 
       <section className="form-section">
         <h2>5. Características</h2>
+
         <div className="feature-grid">
           {PROPERTY_FEATURES.map((feature) => (
             <label key={feature}>
               <input
                 type="checkbox"
                 checked={features.includes(feature)}
-                onChange={() => toggleFeature(feature)}
+                onChange={() =>
+                  toggleFeature(feature)
+                }
               />{' '}
               {feature}
             </label>
           ))}
         </div>
+
         <label>
           Outras características
           <textarea
@@ -1084,7 +1457,8 @@ export default function PropertyForm() {
             onChange={(e) =>
               setF({
                 ...f,
-                outras_caracteristicas: e.target.value,
+                outras_caracteristicas:
+                  e.target.value,
               })
             }
             placeholder="Informe outros diferenciais do imóvel."
@@ -1094,13 +1468,17 @@ export default function PropertyForm() {
 
       <section className="form-section">
         <h2>6. Apresentação</h2>
+
         <label>
           Descrição
           <textarea
             rows={6}
             value={f.descricao}
             onChange={(e) =>
-              setF({ ...f, descricao: e.target.value })
+              setF({
+                ...f,
+                descricao: e.target.value,
+              })
             }
           />
         </label>
@@ -1111,10 +1489,11 @@ export default function PropertyForm() {
           <div>
             <h2>7. Fotos do imóvel</h2>
             <p>
-              Até 10 fotos. JPEG, PNG ou WebP. Máximo de 5 MB por
-              foto.
+              Até 10 fotos. JPEG, PNG ou WebP. Máximo de
+              5 MB por foto.
             </p>
           </div>
+
           <strong>{photos.length} / 10</strong>
         </div>
 
@@ -1123,17 +1502,23 @@ export default function PropertyForm() {
           multiple
           accept="image/jpeg,image/png,image/webp"
           onChange={selectPhotos}
-          disabled={saving || photos.length >= MAX_PHOTOS}
+          disabled={
+            saving || photos.length >= MAX_PHOTOS
+          }
         />
 
         {photos.length > 0 && (
           <>
             <p className="media-help">
-              Escolha manualmente qual foto será a capa do imóvel.
+              Escolha manualmente qual foto será a capa
+              do imóvel.
             </p>
+
             <div className="property-media-grid">
               {photos.map((photo, index) => {
-                const isCover = photo.id === coverId;
+                const isCover =
+                  photo.id === coverId;
+
                 return (
                   <article
                     className={`property-media-card ${
@@ -1144,24 +1529,36 @@ export default function PropertyForm() {
                     <div className="property-media-preview">
                       <img
                         src={photo.preview}
-                        alt={`Foto ${index + 1} do imóvel`}
+                        alt={`Foto ${
+                          index + 1
+                        } do imóvel`}
                       />
+
                       {isCover && (
-                        <span className="cover-badge">CAPA</span>
+                        <span className="cover-badge">
+                          CAPA
+                        </span>
                       )}
                     </div>
+
                     <div className="property-media-info">
-                      <small>Foto {index + 1}</small>
+                      <small>
+                        Foto {index + 1}
+                      </small>
+
                       <span title={photo.file.name}>
                         {photo.file.name}
                       </span>
                     </div>
+
                     <div className="property-media-actions">
                       {!isCover ? (
                         <button
                           type="button"
                           className="secondary-button"
-                          onClick={() => defineCover(photo.id)}
+                          onClick={() =>
+                            defineCover(photo.id)
+                          }
                           disabled={saving}
                         >
                           Definir como capa
@@ -1171,10 +1568,13 @@ export default function PropertyForm() {
                           Foto principal
                         </strong>
                       )}
+
                       <button
                         type="button"
                         className="danger-button"
-                        onClick={() => removePhoto(photo.id)}
+                        onClick={() =>
+                          removePhoto(photo.id)
+                        }
                         disabled={saving}
                       >
                         Remover
@@ -1192,9 +1592,15 @@ export default function PropertyForm() {
         <div className="media-title">
           <div>
             <h2>8. Vídeo do imóvel</h2>
-            <p>Opcional. 1 vídeo por imóvel em MP4 ou WebM, até 50 MB.</p>
+            <p>
+              Opcional. 1 vídeo por imóvel em MP4 ou
+              WebM, até 50 MB.
+            </p>
           </div>
-          <strong>{video ? '1 / 1' : '0 / 1'}</strong>
+
+          <strong>
+            {video ? '1 / 1' : '0 / 1'}
+          </strong>
         </div>
 
         {!video && (
@@ -1208,11 +1614,17 @@ export default function PropertyForm() {
 
         {video && (
           <div className="property-video-card">
-            <video src={videoPreview} controls preload="metadata" />
+            <video
+              src={videoPreview}
+              controls
+              preload="metadata"
+            />
+
             <div className="property-media-info">
               <small>Vídeo selecionado</small>
               <span>{video.name}</span>
             </div>
+
             <button
               type="button"
               className="danger-button"
@@ -1227,37 +1639,60 @@ export default function PropertyForm() {
 
       <section className="form-section">
         <h2>9. Gestão e publicação</h2>
+
         <div className="grid">
           <label>
             Status
             <select
               value={f.status}
-              onChange={(e) => setF({ ...f, status: e.target.value })}
+              onChange={(e) =>
+                setF({
+                  ...f,
+                  status: e.target.value,
+                })
+              }
             >
-              <option value="disponivel">Disponível</option>
-              <option value="reservado">Reservado</option>
-              <option value="vendido">Vendido</option>
-              <option value="inativo">Inativo</option>
+              <option value="disponivel">
+                Disponível
+              </option>
+              <option value="reservado">
+                Reservado
+              </option>
+              <option value="vendido">
+                Vendido
+              </option>
+              <option value="inativo">
+                Inativo
+              </option>
             </select>
           </label>
         </div>
+
         <div className="checks">
           <label>
             <input
               type="checkbox"
               checked={f.destaque}
               onChange={(e) =>
-                setF({ ...f, destaque: e.target.checked })
+                setF({
+                  ...f,
+                  destaque: e.target.checked,
+                })
               }
             />{' '}
             Destaque
           </label>
+
           <label>
             <input
               type="checkbox"
               checked={f.publicar_site}
               onChange={(e) =>
-                setF({ ...f, publicar_site: e.target.checked })
+                setF({
+                  ...f,
+                  publicar_site:
+                    e.target.checked,
+                })
               }
             />{' '}
             Publicar no site
@@ -1269,8 +1704,11 @@ export default function PropertyForm() {
 
       <div className="actions">
         <button disabled={saving}>
-          {saving ? 'Salvando...' : 'Salvar imóvel'}
+          {saving
+            ? 'Salvando...'
+            : 'Salvar imóvel'}
         </button>
+
         <a href="/imoveis">Cancelar</a>
       </div>
     </form>
